@@ -13,7 +13,7 @@ $needsSetup = !$pathsDone || !$lastScrape;
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SubSyncarr</title>
 <link rel="stylesheet" href="assets/style.css">
-<link rel="icon" href="assets/icon.png" type="image/png">
+<link rel="icon" href="assets/favicon.ico" type="image/png">
 </head>
 <body>
 <script>
@@ -28,13 +28,13 @@ $needsSetup = !$pathsDone || !$lastScrape;
   <div class="header">
     <img src="assets/icon.png" alt="SubSyncarr" style="width:62px;height:62px;border-radius:10px;">
     <div>
-      <h1>SubSyncarr</h1>
+      <h1>Sub<font style="font-weight:400">Syncarr</font></h1>
       <div class="tagline">Fix out-of-sync subtitles for your media library</div>
     </div>
     <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" style="margin-left:auto" id="themeBtn">☀️</button>
   </div>
 
-  <!-- Navigation -->
+  <!-- Navigation  -->
   <div class="nav">
     <a href="#" class="active" data-page="search">Search</a>
     <a href="#" data-page="queue">Queue<span id="queueBadge"></span></a>
