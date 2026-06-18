@@ -1,0 +1,3 @@
+# SubSync library scrape - schedule set by SCRAPE_INTERVAL env var
+# This file is overwritten by entrypoint.sh on container start
+0 */12 * * * www-data curl -s http://localhost:5889/api.php?action=scrape > /dev/null 2>&1

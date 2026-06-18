@@ -1,0 +1,705 @@
+<?php
+require_once __DIR__ . '/includes/db.php';
+$setupDone = DB::getSetting('setup_complete', '0') === '1';
+if (!$setupDone) { header('Location: settings.php'); exit; }
+$pathsDone = DB::getSetting('paths_detected', '0') === '1';
+$lastScrape = DB::getSetting('last_scrape', '');
+$needsSetup = !$pathsDone || !$lastScrape;
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SubSyncarr</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" href="assets/icon.png" type="image/png">
+</head>
+<body>
+<script>
+(function(){
+  var t = localStorage.getItem('subsync-theme') || 'light';
+  document.documentElement.setAttribute('data-theme', t);
+})();
+</script>
+<div class="app">
+
+  <!-- Header -->
+  <div class="header">
+    <img src="assets/icon.png" alt="SubSyncarr" style="width:62px;height:62px;border-radius:10px;">
+    <div>
+      <h1>SubSyncarr</h1>
+      <div class="tagline">Fix out-of-sync subtitles for your media library</div>
+    </div>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" style="margin-left:auto" id="themeBtn">☀️</button>
+  </div>
+
+  <!-- Navigation -->
+  <div class="nav">
+    <a href="#" class="active" data-page="search">Search</a>
+    <a href="#" data-page="queue">Queue<span id="queueBadge"></span></a>
+    <a href="settings.php">Settings</a>
+  </div>
+
+  <!-- Stats bar -->
+  <div class="stats-bar" id="statsBar">
+    <div class="stat"><div class="stat-value" id="statMovies">-</div><div class="stat-label">Movies</div></div>
+    <div class="stat"><div class="stat-value" id="statShows">-</div><div class="stat-label">TV Shows</div></div>
+    <div class="stat"><div class="stat-value" id="statEpisodes">-</div><div class="stat-label">Episodes</div></div>
+    <div class="stat"><div class="stat-value" id="statSyncs">-</div><div class="stat-label">Synced</div></div>
+    <div class="stat"><div class="stat-value" id="statLastScrape">-</div><div class="stat-label">Last Scrape</div></div>
+  </div>
+
+  <!-- Setup Warning Banner -->
+  <?php if ($needsSetup): ?>
+  <div style="background:var(--warning-dim);border:1px solid rgba(251,191,36,0.3);border-radius:var(--radius);padding:1rem;margin-bottom:1.25rem;font-size:0.9rem;line-height:1.6">
+    <strong style="color:var(--warning)">⚠ Setup Required</strong><br>
+    <?php if (!$pathsDone): ?>
+      <span style="color:var(--text)">Library paths have not been detected.</span>
+      <a href="settings.php" style="color:var(--accent)">Go to Settings</a> → click <strong>Detect Library Paths</strong> to configure.
+    <?php elseif (!$lastScrape): ?>
+      <span style="color:var(--text)">Library has not been scraped yet.</span>
+      <a href="settings.php" style="color:var(--accent)">Go to Settings</a> → click <strong>Scrape Library Now</strong> to populate your movie and TV show database.
+    <?php endif; ?>
+  </div>
+  <?php endif; ?>
+
+  <!-- Search Page -->
+  <div id="pageSearch">
+    <div class="search-wrap">
+      <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" id="searchInput" class="search-input" placeholder="Search movies and TV shows..." autocomplete="off">
+      <div class="results-dropdown" id="resultsDropdown"></div>
+    </div>
+
+    <!-- Selected item panel -->
+    <div class="selected-panel" id="selectedPanel">
+      <div class="selected-header">
+        <img id="selPoster" class="selected-poster" src="" alt="">
+        <div class="selected-info">
+          <div class="selected-title" id="selTitle"></div>
+          <div class="selected-meta" id="selMeta"></div>
+          <div class="selected-path" id="selPath"></div>
+          <div style="margin-top:0.75rem" id="selActions"></div>
+        </div>
+      </div>
+      <!-- TV Episodes tree goes here -->
+      <div id="tvEpisodes" style="display:none"></div>
+    </div>
+
+    <!-- Scan results panel -->
+    <div class="scan-panel" id="scanPanel">
+      <div class="panel-title">
+        <span>Subtitle Files</span>
+        <span id="scanSummary" style="font-weight:400;font-size:0.8rem;color:var(--text-dim)"></span>
+      </div>
+      <div id="scanResults"></div>
+    </div>
+  </div>
+
+  <!-- Queue Page -->
+  <div id="pageQueue" style="display:none">
+    <div class="queue-panel">
+      <div class="panel-title">
+        <span>Sync Queue</span>
+        <button class="btn btn-scan" onclick="clearQueue()">Clear All</button>
+      </div>
+      <div id="queueList">
+        <div class="queue-empty">
+          <div class="queue-empty-icon">🎬</div>
+          No sync jobs yet.<br>Search for a movie or TV show, scan its folder, and click Sync.
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────
+let searchTimer = null;
+let queueTimer = null;
+let currentItem = null;
+let searchResults = []; // Store results to avoid onclick quote issues
+
+// ── Navigation ─────────────────────────────────────────────────────────
+document.querySelectorAll('.nav a[data-page]').forEach(link => {
+  link.addEventListener('click', e => {
+    e.preventDefault();
+    const page = link.dataset.page;
+    document.querySelectorAll('.nav a[data-page]').forEach(l => l.classList.remove('active'));
+    link.classList.add('active');
+    document.getElementById('pageSearch').style.display = page === 'search' ? 'block' : 'none';
+    document.getElementById('pageQueue').style.display = page === 'queue' ? 'block' : 'none';
+    if (page === 'queue') refreshQueue();
+  });
+});
+
+// ── Stats ──────────────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const r = await fetch('api.php?action=stats');
+    const s = await r.json();
+    const fmt = n => Number(n || 0).toLocaleString('en-US');
+    document.getElementById('statMovies').textContent = fmt(s.movies);
+    document.getElementById('statShows').textContent = fmt(s.tv_shows);
+    document.getElementById('statEpisodes').textContent = fmt(s.tv_episodes);
+    document.getElementById('statSyncs').textContent = fmt(s.syncs_done);
+    const ls = s.last_scrape || 'Never';
+    if (ls === 'Never') {
+      document.getElementById('statLastScrape').textContent = ls;
+    } else {
+      const d = new Date(ls.replace(' ', 'T'));
+      document.getElementById('statLastScrape').textContent = d.toLocaleDateString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric'
+      });
+    }
+  } catch(e) {}
+}
+loadStats();
+
+// ── Search ─────────────────────────────────────────────────────────────
+const searchInput = document.getElementById('searchInput');
+const dropdown = document.getElementById('resultsDropdown');
+
+searchInput.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  const q = searchInput.value.trim();
+  if (q.length < 2) { dropdown.style.display = 'none'; return; }
+  searchTimer = setTimeout(() => doSearch(q), 200);
+});
+
+searchInput.addEventListener('blur', () => {
+  setTimeout(() => dropdown.style.display = 'none', 250);
+});
+
+async function doSearch(q) {
+  try {
+    const r = await fetch('api.php?action=search&q=' + encodeURIComponent(q));
+    const items = await r.json();
+    if (!items.length) {
+      dropdown.innerHTML = '<div class="result-item"><div class="result-info"><div class="result-title" style="color:var(--text-dim)">No results found</div></div></div>';
+      dropdown.style.display = 'block';
+      return;
+    }
+
+    searchResults = items; // Store for safe onclick reference
+
+    dropdown.innerHTML = items.map((item, idx) => {
+      const poster = item.poster_url
+        ? `<img class="result-poster" src="${esc(item.poster_url)}" loading="lazy" onerror="this.style.display='none'">`
+        : `<div class="result-poster-placeholder">?</div>`;
+      const badge = item.type === 'movie'
+        ? '<span class="result-badge badge-movie">Movie</span>'
+        : '<span class="result-badge badge-tv">TV</span>';
+      const meta = item.type === 'movie'
+        ? [item.year, item.rating ? '★ ' + item.rating : '', item.genre].filter(Boolean).join(' · ')
+        : [item.year, item.seasons + ' seasons', item.episode_count + ' eps'].filter(Boolean).join(' · ');
+      const plot = item.plot ? `<div class="result-plot">${esc(item.plot)}</div>` : '';
+      return `<div class="result-item" onclick="selectItem(searchResults[${idx}])">
+        ${poster}
+        <div class="result-info">
+          <div class="result-title">${esc(item.title)}</div>
+          <div class="result-meta">${meta}</div>
+          ${plot}
+        </div>
+        ${badge}
+      </div>`;
+    }).join('');
+    dropdown.style.display = 'block';
+  } catch(e) {
+    dropdown.innerHTML = '<div class="result-item"><div class="result-info"><div class="result-title" style="color:var(--danger)">Search error</div></div></div>';
+    dropdown.style.display = 'block';
+  }
+}
+
+// ── Item Selection ─────────────────────────────────────────────────────
+async function selectItem(item) {
+  currentItem = item;
+  searchInput.value = '';
+  dropdown.style.display = 'none';
+
+  const panel = document.getElementById('selectedPanel');
+  const poster = document.getElementById('selPoster');
+  const tvEps = document.getElementById('tvEpisodes');
+
+  document.getElementById('selTitle').textContent = item.title + (item.year ? ` (${item.year})` : '');
+  poster.src = item.poster_url || '';
+  poster.style.display = item.poster_url ? 'block' : 'none';
+
+  if (item.type === 'movie') {
+    const rating = item.rating ? '★ ' + item.rating : '';
+    const year = item.year || '';
+    document.getElementById('selMeta').textContent = [year, rating].filter(Boolean).join(' · ');
+
+    // Genre line
+    let genreHtml = '';
+    if (item.genre) {
+      genreHtml = `<div class="selected-genre">${esc(item.genre)}</div>`;
+    }
+
+    // IMDB link
+    let imdbHtml = '';
+    if (item.imdb_id) {
+      imdbHtml = `<div class="selected-imdb"><a href="https://www.imdb.com/title/${esc(item.imdb_id)}/" target="_blank">View on IMDB ↗</a></div>`;
+    }
+
+    // Plot
+    let plotHtml = '';
+    if (item.plot) {
+      plotHtml = `<div style="font-size:0.85rem;color:var(--text-dim);line-height:1.6;margin-bottom:0.75rem;max-height:120px;overflow-y:auto">${esc(item.plot)}</div>`;
+    }
+
+    document.getElementById('selPath').innerHTML = genreHtml + plotHtml + imdbHtml +
+      `<div style="margin-top:0.5rem;font-size:0.75rem;color:var(--text-faint);word-break:break-all">${esc(item.folder_path || 'No path available')}</div>`;
+
+    document.getElementById('selActions').innerHTML = item.folder_path
+      ? `<button class="btn btn-sync btn-lg" onclick="scanFolder('${escJs(item.folder_path)}')">Scan for Subtitles</button>`
+      : '<span style="color:var(--warning);font-size:0.85rem">No folder path — run a library scrape first</span>';
+    tvEps.style.display = 'none';
+
+  } else if (item.type === 'tv') {
+    document.getElementById('selMeta').textContent = `${item.seasons || '?'} seasons · ${item.episode_count || '?'} episodes` + (item.year ? ` · ${item.year}` : '');
+
+    let tvInfoHtml = '';
+    if (item.plot) {
+      tvInfoHtml += `<div style="font-size:0.85rem;color:var(--text-dim);line-height:1.6;margin-bottom:0.75rem;max-height:120px;overflow-y:auto">${esc(item.plot)}</div>`;
+    }
+    document.getElementById('selPath').innerHTML = tvInfoHtml;
+
+    document.getElementById('selActions').innerHTML = '<div class="spinner"></div> Loading episodes...';
+    tvEps.style.display = 'block';
+    tvEps.innerHTML = '';
+
+    // Fetch episodes
+    try {
+      const r = await fetch('api.php?action=episodes&show_id=' + item.id);
+      const data = await r.json();
+      document.getElementById('selActions').innerHTML = '';
+
+      if (!data.seasons || Object.keys(data.seasons).length === 0) {
+        tvEps.innerHTML = '<div style="color:var(--warning);font-size:0.85rem">No episodes found — run a library scrape</div>';
+      } else {
+        let html = '';
+        for (const [sNum, eps] of Object.entries(data.seasons)) {
+          if (sNum === '0') continue; // Skip specials/extras
+          const firstEp = eps[0];
+          const seasonFolder = firstEp.folder_path || '';
+          html += `<div class="season-group">
+            <div class="season-header" onclick="toggleSeason(this)">
+              <span class="arrow">▶</span>
+              Season ${sNum} (${eps.length} episodes)
+              ${seasonFolder ? `<button class="btn btn-batch" style="margin-left:auto" onclick="event.stopPropagation();syncSeason('${escJs(seasonFolder)}','${esc(item.title)} S${sNum}')">Sync All Season</button>` : ''}
+            </div>
+            <div class="season-episodes">`;
+          eps.forEach(ep => {
+            const epFolder = ep.folder_path || '';
+            html += `<div class="episode-row">
+              <span class="ep-num">E${String(ep.episode).padStart(2,'0')}</span>
+              <span class="ep-title">${esc(ep.title || 'Episode ' + ep.episode)}</span>
+              <div class="ep-actions">
+                ${epFolder ? `<button class="btn btn-scan" onclick="scanFolder('${escJs(epFolder)}')">Scan</button>` : '<span style="font-size:0.75rem;color:var(--text-faint)">No path</span>'}
+              </div>
+            </div>`;
+          });
+          html += '</div></div>';
+        }
+        tvEps.innerHTML = html;
+      }
+    } catch(e) {
+      document.getElementById('selActions').innerHTML = '<span style="color:var(--danger)">Failed to load episodes</span>';
+    }
+  }
+
+  panel.style.display = 'block';
+  document.getElementById('scanPanel').style.display = 'none';
+}
+
+function toggleSeason(el) {
+  el.classList.toggle('open');
+  const eps = el.nextElementSibling;
+  eps.classList.toggle('open');
+}
+
+// ── Folder Scan ────────────────────────────────────────────────────────
+async function scanFolder(folderPath, recursive) {
+  const scanPanel = document.getElementById('scanPanel');
+  const scanResults = document.getElementById('scanResults');
+  const scanSummary = document.getElementById('scanSummary');
+
+  scanPanel.style.display = 'block';
+  scanResults.innerHTML = '<div class="spinner"></div> Scanning folder...';
+  scanSummary.textContent = '';
+
+  // Scroll scan panel into view
+  setTimeout(() => scanPanel.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+
+  try {
+    const r = await fetch('api.php?action=scan', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ folder: folderPath, recursive: !!recursive })
+    });
+    const data = await r.json();
+
+    if (data.error) {
+      scanResults.innerHTML = `<div style="color:var(--danger)">${esc(data.error)}</div>`;
+      return;
+    }
+
+    scanSummary.textContent = `${data.total_videos} video(s), ${data.total_external_subs} subtitle file(s)`;
+
+    if (!data.pairs || data.pairs.length === 0) {
+      scanResults.innerHTML = '<div style="color:var(--warning)">No video files found in this folder</div>';
+      return;
+    }
+
+    let html = '';
+    data.pairs.forEach(pair => {
+      html += `<div class="file-pair">`;
+      html += `<div class="pair-video">${esc(pair.video_filename)} <span class="size">(${pair.size_mb} MB)</span></div>`;
+
+      // Embedded tracks with human-friendly codec names
+      if (pair.embedded_tracks && pair.embedded_tracks.length > 0) {
+        html += '<div class="embedded-tracks"><div class="embedded-label">Embedded Subtitle Tracks (info only — not modified)</div>';
+        pair.embedded_tracks.forEach(t => {
+          const codec = friendlyCodec(t.codec);
+          const forced = t.forced ? ' · Forced' : '';
+          const title = t.title ? ` — ${esc(t.title)}` : '';
+          html += `<div class="embedded-track">${t.language} · ${codec.name} <span style="color:var(--text-faint);font-size:0.72rem">(${codec.note})</span>${forced}${title}</div>`;
+        });
+        html += '</div>';
+      }
+
+      // External subtitles
+      if (!pair.subtitles || pair.subtitles.length === 0) {
+        html += '<div class="no-subs">No external subtitle files — embedded tracks above are already in sync with the video</div>';
+      } else {
+        pair.subtitles.forEach(sub => {
+          const backupBadge = sub.has_backup ? ' <span style="color:var(--success);font-size:0.7rem">✓ backup exists</span>' : '';
+          html += `<div class="sub-row">
+            <span class="sub-name">${esc(sub.filename)}${backupBadge}</span>
+            <span class="sub-size">${sub.size_kb} KB</span>
+            <button class="btn btn-sync" onclick="syncOne('${escJs(pair.video)}','${escJs(sub.path)}','${escJs(pair.video_filename)}')">Sync</button>
+            ${sub.has_backup ? `<button class="btn btn-restore" onclick="restoreOne('${escJs(sub.path)}')">Restore</button>` : ''}
+          </div>`;
+        });
+      }
+      html += '</div>';
+    });
+
+    scanResults.innerHTML = html;
+
+  } catch(e) {
+    scanResults.innerHTML = `<div style="color:var(--danger)">Scan error: ${esc(e.message)}</div>`;
+  }
+}
+
+// Translate technical codec names to human-friendly
+function friendlyCodec(codec) {
+  const map = {
+    'HDMV_PGS_SUBTITLE': { name: 'PGS', note: 'Blu-ray image-based, cannot be synced' },
+    'SUBRIP': { name: 'SRT', note: 'text-based' },
+    'SRT': { name: 'SRT', note: 'text-based' },
+    'ASS': { name: 'ASS', note: 'styled text' },
+    'SSA': { name: 'SSA', note: 'styled text' },
+    'MOV_TEXT': { name: 'Text', note: 'MP4 text-based' },
+    'WEBVTT': { name: 'WebVTT', note: 'web text-based' },
+    'DVB_SUBTITLE': { name: 'DVB', note: 'broadcast image-based' },
+    'DVD_SUBTITLE': { name: 'VobSub', note: 'DVD image-based, cannot be synced' },
+    'DVDSUB': { name: 'VobSub', note: 'DVD image-based, cannot be synced' },
+  };
+  return map[codec.toUpperCase()] || { name: codec, note: 'subtitle track' };
+}
+
+// ── Sync Operations ────────────────────────────────────────────────────
+async function syncOne(videoPath, subPath, title) {
+  if (!confirm(`Sync this subtitle?\n\n${subPath.split('/').pop()}\n\nA backup will be created first.`)) return;
+
+  try {
+    const r = await fetch('api.php?action=sync', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ video: videoPath, subtitle: subPath, title: title })
+    });
+    const data = await r.json();
+    if (data.error) { toast(data.error, 'error'); return; }
+    toast('Added to sync queue', 'info');
+    // Switch to Queue tab
+    document.querySelectorAll('.nav a[data-page]').forEach(l => l.classList.remove('active'));
+    document.querySelector('[data-page="queue"]').classList.add('active');
+    document.getElementById('pageSearch').style.display = 'none';
+    document.getElementById('pageQueue').style.display = 'block';
+    startQueuePolling();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function syncSeason(folderPath, title) {
+  if (!confirm(`Sync ALL external subtitles in this season folder?\n\nBackups will be created for each file.`)) return;
+
+  try {
+    const r = await fetch('api.php?action=sync_batch', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ folder: folderPath, recursive: false, title: title })
+    });
+    const data = await r.json();
+    if (data.error) { toast(data.error, 'error'); return; }
+    toast(`${data.count} subtitle(s) queued for sync`, 'info');
+    // Switch to Queue tab
+    document.querySelectorAll('.nav a[data-page]').forEach(l => l.classList.remove('active'));
+    document.querySelector('[data-page="queue"]').classList.add('active');
+    document.getElementById('pageSearch').style.display = 'none';
+    document.getElementById('pageQueue').style.display = 'block';
+    startQueuePolling();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function restoreOne(subPath) {
+  if (!confirm(`Restore subtitle from backup?\n\n${subPath.split('/').pop()}`)) return;
+
+  try {
+    const r = await fetch('api.php?action=restore', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ subtitle: subPath })
+    });
+    const data = await r.json();
+    if (data.error) { toast(data.error, 'error'); return; }
+    toast('Restored from backup', 'success');
+    // Re-scan the folder
+    const folder = subPath.substring(0, subPath.lastIndexOf('/'));
+    scanFolder(folder);
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ── Queue ──────────────────────────────────────────────────────────────
+const statusMessages = [
+  { after: 0, text: 'Extracting audio track...' },
+  { after: 10, text: 'Analyzing speech patterns...' },
+  { after: 30, text: 'Computing subtitle alignments...' },
+  { after: 60, text: 'Still processing — longer files take more time...' },
+  { after: 120, text: 'Almost there — finalizing alignment...' },
+  { after: 180, text: 'Large file — processing continues...' },
+];
+
+function getStatusMessage(elapsedSec) {
+  let msg = statusMessages[0].text;
+  for (const s of statusMessages) {
+    if (elapsedSec >= s.after) msg = s.text;
+  }
+  return msg;
+}
+
+function formatElapsed(seconds) {
+  if (seconds < 60) return Math.round(seconds) + 's';
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  return m + 'm ' + s + 's';
+}
+
+function parseSyncLog(log) {
+  const r = { offset: null, framerate: null, elapsed: null, score: null };
+  const m1 = log.match(/offset seconds:\s*([\d.-]+)/);
+  if (m1) r.offset = m1[1];
+  const m2 = log.match(/framerate scale factor:\s*([\d.]+)/);
+  if (m2) r.framerate = m2[1];
+  const m3 = log.match(/Completed in ([\d.]+)s/);
+  if (m3) r.elapsed = m3[1];
+  const m4 = log.match(/score:\s*([\d.]+)/);
+  if (m4) r.score = m4[1];
+  return r;
+}
+
+function toggleLog(id) {
+  const el = document.getElementById('log-' + id);
+  if (el) el.classList.toggle('open');
+}
+
+async function refreshQueue() {
+  try {
+    const r = await fetch('api.php?action=queue');
+    const items = await r.json();
+    const list = document.getElementById('queueList');
+    const badge = document.getElementById('queueBadge');
+
+    if (!items.length) {
+      list.innerHTML = `<div class="queue-empty">
+        <div class="queue-empty-icon">🎬</div>
+        No sync jobs yet.<br>Search for a movie or TV show, scan its folder, and click Sync.
+      </div>`;
+      badge.innerHTML = '';
+      badge.className = '';
+      return;
+    }
+
+    const runningCount = items.filter(i => i.status === 'running' || i.status === 'pending').length;
+    if (runningCount > 0) {
+      badge.innerHTML = runningCount;
+      badge.className = 'nav-badge nav-badge-active';
+    } else {
+      badge.innerHTML = '';
+      badge.className = '';
+    }
+
+    list.innerHTML = items.map(item => {
+      const subFile = item.subtitle_path ? item.subtitle_path.split('/').pop() : '';
+      const logId = 'log-' + item.id;
+
+      // Format the log with proper line breaks
+      let formattedLog = '';
+      if (item.log) {
+        formattedLog = esc(item.log)
+          .replace(/✓/g, '<span class="log-ok">✓</span>')
+          .replace(/✗/g, '<span class="log-err">✗</span>')
+          .replace(/(INFO)/g, '<span class="log-dim">$1</span>');
+      }
+
+      // ── RUNNING STATE ──────────────────────────────────
+      if (item.status === 'running') {
+        let elapsedSec = 0;
+        if (item.started_at) {
+          const started = new Date(item.started_at.replace(' ', 'T') + 'Z');
+          elapsedSec = (Date.now() - started.getTime()) / 1000;
+        }
+        const statusMsg = getStatusMessage(elapsedSec);
+
+        return `<div class="queue-item queue-item-running">
+          <div class="qi-header">
+            <div class="qi-icon qi-icon-running">⟳</div>
+            <div class="qi-title-wrap">
+              <div class="qi-title">Syncing: ${esc(item.media_title)}</div>
+              <div class="qi-subtitle">${esc(subFile)}</div>
+            </div>
+          </div>
+          <div class="qi-progress"><div class="qi-progress-bar"><div class="qi-progress-stripe"></div></div></div>
+          <div class="qi-status">
+            <span>${statusMsg}</span>
+            <span class="qi-elapsed">${formatElapsed(elapsedSec)}</span>
+          </div>
+          ${formattedLog ? `<button class="qi-log-toggle" onclick="toggleLog(${item.id})">▸ Show technical log</button>
+          <div class="qi-log" id="${logId}">${formattedLog}</div>` : ''}
+        </div>`;
+      }
+
+      // ── COMPLETED STATE ────────────────────────────────
+      if (item.status === 'done') {
+        const s = parseSyncLog(item.log || '');
+        const offsetText = s.offset ? `Your subtitles were <strong>${s.offset} seconds</strong> out of sync. They've been corrected` : 'Subtitles have been aligned to the audio track';
+        const backupMatch = (item.log || '').match(/Backup:\s*(.+)/);
+        const backupName = backupMatch ? backupMatch[1] : '';
+        const statsText = [
+          s.elapsed ? 'Processed in ' + formatElapsed(parseFloat(s.elapsed)) : '',
+          s.score ? 'Confidence: ' + Number(s.score).toLocaleString() : '',
+        ].filter(Boolean).join('  ·  ');
+
+        return `<div class="queue-item queue-item-done">
+          <div class="qi-header">
+            <div class="qi-icon qi-icon-done">✓</div>
+            <div class="qi-title-wrap">
+              <div class="qi-title">${esc(item.media_title)} — <span class="qi-title-fixed">Subtitles Fixed</span></div>
+              <div class="qi-subtitle">${esc(subFile)}</div>
+            </div>
+          </div>
+          <div class="qi-progress"><div class="qi-progress-bar"><div class="qi-progress-done"></div></div></div>
+          <div class="qi-summary">
+            ${offsetText} and the original was backed up${backupName ? ' as <strong>' + esc(backupName) + '</strong>' : ''}.
+          </div>
+          ${statsText ? `<div class="qi-stats">${statsText}</div>` : ''}
+          <button class="qi-log-toggle" onclick="toggleLog(${item.id})">▸ Show technical log</button>
+          <div class="qi-log" id="${logId}">${formattedLog}</div>
+        </div>`;
+      }
+
+      // ── FAILED STATE ───────────────────────────────────
+      if (item.status === 'failed') {
+        return `<div class="queue-item queue-item-failed">
+          <div class="qi-header">
+            <div class="qi-icon qi-icon-failed">✗</div>
+            <div class="qi-title-wrap">
+              <div class="qi-title">${esc(item.media_title)} — Sync Failed</div>
+              <div class="qi-subtitle">${esc(subFile)}</div>
+            </div>
+          </div>
+          <div class="qi-progress"><div class="qi-progress-bar"><div class="qi-progress-failed"></div></div></div>
+          <div class="qi-summary" style="color:var(--text-dim)">
+            ffsubsync could not align the subtitles. The original file was not modified. Your backup is safe.
+          </div>
+          <button class="qi-log-toggle" onclick="toggleLog(${item.id})">▸ Show technical log</button>
+          <div class="qi-log" id="${logId}">${formattedLog}</div>
+        </div>`;
+      }
+
+      // ── PENDING STATE ──────────────────────────────────
+      return `<div class="queue-item">
+        <div class="qi-header">
+          <div class="qi-icon qi-icon-pending">◷</div>
+          <div class="qi-title-wrap">
+            <div class="qi-title">${esc(item.media_title)}</div>
+            <div class="qi-subtitle">${esc(subFile)}</div>
+          </div>
+        </div>
+        <div class="qi-status"><span>Waiting in queue...</span></div>
+      </div>`;
+    }).join('');
+
+    if (runningCount > 0) {
+      startQueuePolling();
+    } else {
+      stopQueuePolling();
+      loadStats();
+    }
+
+  } catch(e) {}
+}
+
+function startQueuePolling() {
+  if (queueTimer) return;
+  queueTimer = setInterval(refreshQueue, 2000);
+  refreshQueue();
+}
+
+function stopQueuePolling() {
+  if (queueTimer) { clearInterval(queueTimer); queueTimer = null; }
+}
+
+async function clearQueue() {
+  await fetch('api.php?action=clear_queue');
+  refreshQueue();
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escJs(s) { return String(s || '').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+
+function toast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast toast-' + (type || 'info') + ' show';
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') || 'light';
+  const next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('subsync-theme', next);
+  document.getElementById('themeBtn').textContent = next === 'dark' ? '☀️' : '🌙';
+}
+// Set initial button state
+(function(){
+  var t = document.documentElement.getAttribute('data-theme') || 'light';
+  document.getElementById('themeBtn').textContent = t === 'dark' ? '☀️' : '🌙';
+})();
+
+// Auto-poll queue on load if there are active jobs
+refreshQueue();
+</script>
+</body>
+</html>
