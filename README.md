@@ -20,7 +20,7 @@
 
 SubSyncarr connects to your **Kodi** media library, scrapes your movies and TV shows, and gives you a clean web interface to fix subtitle timing — all from your phone, tablet, or browser. **Plex, Emby,** and **Jellyfin** support currently in progress.
 
-Have you ever sat down to watch a movie or show and find that the subs are out of sync? You hunt for other subs and struggle to find something that works. With this, With a movie/series seach, a couple button clicks, in about 3 minutes, you wii have a properly synchronized subtitle; **without leaving the couch!**
+Have you ever sat down to watch a movie or show and find that the subs are out of sync? You hunt for other subs and struggle to find something that works. With this, With a movie/series seach, a couple button clicks, in about 3 minutes, you wii have a properly synchronized subtitle; all **without leaving the couch!**
 
 It uses [ffsubsync](https://github.com/smacke/ffsubsync) under the hood, which analyzes the audio track of your video and aligns the subtitle timing to match speech patterns. It works with **any language combination** — English audio with English subs, Spanish audio with English subs, or any other pairing.
 
@@ -29,12 +29,14 @@ It uses [ffsubsync](https://github.com/smacke/ffsubsync) under the hood, which a
 - **Search with poster art** — type a movie or TV show name and see results with posters, ratings, genres, and plot summaries
 - **Smart folder scanning** — detects external subtitle files (.srt, .ass, .ssa, .sub, .vtt) and shows embedded tracks for reference
 - **One-click sync** — ffsubsync analyzes the audio and corrects subtitle timing automatically
-- **Automatic backups** — every subtitle is backed up before modification, with one-click restore
+- **Your existing Subtitles are SAFE:** — every subtitle is backed up before modification, with one-click restore
 - **Batch TV season sync** — fix an entire season's subtitles in one click
 - **Live sync queue** — animated progress bar, elapsed timer, and human-readable results
 - **Auto-detection** — automatically detects your Kodi library paths during setup
 - **Light/dark theme** — toggle between light and dark modes
 - **Couch-friendly** — large posters, big tap targets, designed for phone and tablet use
+- **Does NOT work with embedded Subtitles:** — Embedded subtitle are assumed to be correct as they are from the original source.
+- **Themes:** — Quickly toggle between Light and Dark theme.
 
 ---
 
