@@ -35,7 +35,7 @@ It uses [ffsubsync](https://github.com/smacke/ffsubsync) under the hood, which a
 - **Auto-detection** — automatically detects your Kodi library paths during setup
 - **Light/dark theme** — toggle between light and dark modes
 - **Couch-friendly** — large posters, big tap targets, designed for phone and tablet use
-- **Does NOT work with embedded Subtitles:** — Embedded subtitle are assumed to be correct as they are from the original source.
+- **Does NOT work with embedded Subtitles:** — These subs are assumed to be correct as they come from the source.
 - **Themes:** — Quickly toggle between Light and Dark theme.
 
 ---
