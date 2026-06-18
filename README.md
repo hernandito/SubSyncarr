@@ -40,14 +40,15 @@ It uses [ffsubsync](https://github.com/smacke/ffsubsync) under the hood, which a
 
 ## Screenshots
 
-### Search Movies
-<img src="screenshots/search-movies.png" alt="Search Movies" width="800">
 
 ### Search & Select a Movie
 <img src="screenshots/search-movie.png" alt="Movie Detail" width="800">
 
-### Search TV Shows
+### Search and Select a TV Show
 <img src="screenshots/search-tv.png" alt="Search TV" width="800">
+
+### Click Sync
+<img src="screenshots/search-movies.png" alt="Search Movies" width="800">
 
 ### Sync In Progress
 <img src="screenshots/inprogress-queue.png" alt="Sync In Progress" width="800">
