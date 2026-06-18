@@ -18,7 +18,7 @@
 
 ## What It Does
 
-SubSyncarr connects to your **Kodi** media library, scrapes your movies and TV shows, and gives you a clean web interface to fix subtitle timing — all from your phone, tablet, or browser. 
+SubSyncarr connects to your **Kodi** media library, scrapes your movies and TV shows, and gives you a clean web interface to fix subtitle timing — all from your phone, tablet, or browser. **Plex, Emby,** and **Jellyfin** support currently in progress.
 
 Have you ever sat down to watch a movie or show and find that the subs are out of sync? You hunt for other subs and struggle to find something that works? With this, in about 3 minutes, you can correct the subtitle synch; **without leaving the couch!**
 
