@@ -1,7 +1,7 @@
 # SubSyncarr
 
 <p align="center">
-  <img src="full-logo.png" alt="SubSyncarr" width="400">
+  <img src="full-logo.png" alt="SubSyncarr" width="640">
 </p>
 
 <p align="center">
