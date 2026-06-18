@@ -18,7 +18,9 @@
 
 ## What It Does
 
-SubSyncarr connects to your **Kodi** media library, scrapes your movies and TV shows, and gives you a clean web interface to fix subtitle timing — all from your phone, tablet, or browser without leaving the couch.
+SubSyncarr connects to your **Kodi** media library, scrapes your movies and TV shows, and gives you a clean web interface to fix subtitle timing — all from your phone, tablet, or browser. 
+
+Have you ever sat down to watch a movie or show and find that the subs are out of sync? You hunt for other subs and struggle to find something that works? With this, in about 3 minutes, you can correct the subtitle synch; **without leaving the couch!**
 
 It uses [ffsubsync](https://github.com/smacke/ffsubsync) under the hood, which analyzes the audio track of your video and aligns the subtitle timing to match speech patterns. It works with **any language combination** — English audio with English subs, Spanish audio with English subs, or any other pairing.
 
