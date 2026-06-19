@@ -566,8 +566,13 @@ async function refreshQueue() {
           elapsedSec = (Date.now() - started.getTime()) / 1000;
         }
         const statusMsg = getStatusMessage(elapsedSec);
+        const posterHtml = item.poster_url
+          ? `<img class="qi-poster" src="${esc(item.poster_url)}" loading="lazy" onerror="this.className='qi-poster-empty';this.innerHTML='🎬'">`
+          : `<div class="qi-poster-empty">🎬</div>`;
 
         return `<div class="queue-item queue-item-running">
+          ${posterHtml}
+          <div class="qi-content">
           <div class="qi-header">
             <div class="qi-icon qi-icon-running">⟳</div>
             <div class="qi-title-wrap">
@@ -582,6 +587,7 @@ async function refreshQueue() {
           </div>
           ${formattedLog ? `<button class="qi-log-toggle" onclick="toggleLog(${item.id})">▸ Show technical log</button>
           <div class="qi-log" id="${logId}">${formattedLog}</div>` : ''}
+          </div>
         </div>`;
       }
 
@@ -595,8 +601,13 @@ async function refreshQueue() {
           s.elapsed ? 'Processed in ' + formatElapsed(parseFloat(s.elapsed)) : '',
           s.score ? 'Confidence: ' + Number(s.score).toLocaleString() : '',
         ].filter(Boolean).join('  ·  ');
+        const posterHtml = item.poster_url
+          ? `<img class="qi-poster" src="${esc(item.poster_url)}" loading="lazy" onerror="this.className='qi-poster-empty';this.innerHTML='🎬'">`
+          : `<div class="qi-poster-empty">🎬</div>`;
 
         return `<div class="queue-item queue-item-done">
+          ${posterHtml}
+          <div class="qi-content">
           <div class="qi-header">
             <div class="qi-icon qi-icon-done">✓</div>
             <div class="qi-title-wrap">
@@ -611,12 +622,19 @@ async function refreshQueue() {
           ${statsText ? `<div class="qi-stats">${statsText}</div>` : ''}
           <button class="qi-log-toggle" onclick="toggleLog(${item.id})">▸ Show technical log</button>
           <div class="qi-log" id="${logId}">${formattedLog}</div>
+          </div>
         </div>`;
       }
 
       // ── FAILED STATE ───────────────────────────────────
       if (item.status === 'failed') {
+        const posterHtml = item.poster_url
+          ? `<img class="qi-poster" src="${esc(item.poster_url)}" loading="lazy" onerror="this.className='qi-poster-empty';this.innerHTML='🎬'">`
+          : `<div class="qi-poster-empty">🎬</div>`;
+
         return `<div class="queue-item queue-item-failed">
+          ${posterHtml}
+          <div class="qi-content">
           <div class="qi-header">
             <div class="qi-icon qi-icon-failed">✗</div>
             <div class="qi-title-wrap">
@@ -630,11 +648,18 @@ async function refreshQueue() {
           </div>
           <button class="qi-log-toggle" onclick="toggleLog(${item.id})">▸ Show technical log</button>
           <div class="qi-log" id="${logId}">${formattedLog}</div>
+          </div>
         </div>`;
       }
 
       // ── PENDING STATE ──────────────────────────────────
+      const posterHtml = item.poster_url
+        ? `<img class="qi-poster" src="${esc(item.poster_url)}" loading="lazy" onerror="this.className='qi-poster-empty';this.innerHTML='🎬'">`
+        : `<div class="qi-poster-empty">🎬</div>`;
+
       return `<div class="queue-item">
+        ${posterHtml}
+        <div class="qi-content">
         <div class="qi-header">
           <div class="qi-icon qi-icon-pending">◷</div>
           <div class="qi-title-wrap">
@@ -643,6 +668,7 @@ async function refreshQueue() {
           </div>
         </div>
         <div class="qi-status"><span>Waiting in queue...</span></div>
+        </div>
       </div>`;
     }).join('');
 

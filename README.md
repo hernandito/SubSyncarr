@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Fix out-of-sync subtitles from your couch.</strong><br>
-  Search your Kodi library with poster art, scan for subtitle files, and fix timing with one click.
+  Search your Kodi, Plex, Emby, or Jellyfin library with poster art, scan for subtitle files, and fix timing with one click.
 </p>
 
 <p align="center">
@@ -18,30 +18,29 @@
 
 ## What It Does
 
-SubSyncarr connects to your **Kodi** media library, scrapes your movies and TV shows, and gives you a clean web interface to fix subtitle timing — all from your phone, tablet, or browser. **Plex, Emby,** and **Jellyfin** support currently in progress.
+SubSyncarr connects to your **Kodi**, **Plex**, **Emby**, or **Jellyfin** media library, scrapes your movies and TV shows, and gives you a clean web interface to fix subtitle timing — all from your phone, tablet, or browser.
 
-Have you ever sat down to watch a movie or show and find that the subs are out of sync? You hunt for other subs and struggle to find something that works. With this, With a movie/series seach, a couple button clicks, in about 3 minutes, you wii have a properly synchronized subtitle; all **without leaving the couch!**
+Have you ever sat down to watch a movie or show and find that the subs are out of sync? You hunt for other subs and struggle to find something that works. With SubSyncarr, a movie/series search, a couple button clicks, and in about 3 minutes, you will have a properly synchronized subtitle; all **without leaving the couch!**
 
 It uses [ffsubsync](https://github.com/smacke/ffsubsync) under the hood, which analyzes the audio track of your video and aligns the subtitle timing to match speech patterns. It works with **any language combination** — English audio with English subs, Spanish audio with English subs, or any other pairing.
 
 ### Key Features
 
+- **Kodi, Plex, Emby & Jellyfin support** — connect to any of the four major media servers; switch anytime from Settings
 - **Search with poster art** — type a movie or TV show name and see results with posters, ratings, genres, and plot summaries
 - **Smart folder scanning** — detects external subtitle files (.srt, .ass, .ssa, .sub, .vtt) and shows embedded tracks for reference
 - **One-click sync** — ffsubsync analyzes the audio and corrects subtitle timing automatically
-- **Your existing Subtitles are SAFE:** — every subtitle is backed up before modification, with one-click restore
+- **Your existing Subtitles are SAFE** — every subtitle is backed up before modification, with one-click restore
 - **Batch TV season sync** — fix an entire season's subtitles in one click
 - **Live sync queue** — animated progress bar, elapsed timer, and human-readable results
-- **Auto-detection** — automatically detects your Kodi library paths during setup
-- **Light/dark theme** — toggle between light and dark modes
+- **Auto-detection** — automatically detects your library paths during setup
 - **Couch-friendly** — large posters, big tap targets, designed for phone and tablet use
-- **Does NOT work with embedded Subtitles:** — These subs are assumed to be correct as they come from the source.
-- **Themes:** — Quickly toggle between Light and Dark theme.
+- **Does NOT touch embedded subtitles** — these subs are assumed to be correct as they come from the source
+- **Themes** — quickly toggle between Light and Dark theme
 
 ---
 
 ## Screenshots
-
 
 ### Search & Select a Movie
 <img src="screenshots/search-movie.png" alt="Movie Detail" width="800">
@@ -114,13 +113,46 @@ services:
 ## First-Time Setup
 
 1. Open `http://YOUR-IP:5889` — you'll be redirected to Settings
-2. Enter your **Kodi connection** details (host, port, username, password)
-3. Click **Test Connection** to verify
-4. Click **Detect Library Paths** — SubSyncarr queries Kodi and auto-detects where your media lives
-5. Verify both Movies and TV show green ✓ checkmarks (confirms Docker volumes are mapped correctly)
-6. Click **Save Settings**
-7. Click **Scrape Library Now** — this takes 2-3 minutes for large libraries
-8. Go to the **Search** page and start fixing subtitles!
+2. Select your media source: **Kodi**, **Plex**, **Emby**, or **Jellyfin**
+
+### If using Kodi:
+3. Enter your Kodi host, port, username, and password
+4. Make sure HTTP control is enabled in Kodi: Settings → Services → Control → "Allow remote control via HTTP"
+
+### If using Plex:
+3. Enter your Plex server IP and port (default 32400)
+4. Enter your Plex token (see [How to find your Plex token](#how-to-find-your-plex-token) below)
+
+### If using Emby:
+3. Enter your Emby server IP and port (default 8096)
+4. Create an API key: Emby Dashboard → Settings → Advanced → API Keys → click + → name it "SubSyncarr"
+
+### If using Jellyfin:
+3. Enter your Jellyfin server IP and port (default 8096)
+4. Create an API key: Jellyfin Dashboard → Advanced → API Keys → click + → name it "SubSyncarr"
+
+### Then for both:
+5. Click **Test Connection** to verify
+6. Click **Detect Library Paths** — SubSyncarr queries your media server and auto-detects where your media lives
+7. Verify both Movies and TV show green ✓ checkmarks (confirms Docker volumes are mapped correctly)
+8. Click **Save Settings**
+9. Click **Scrape Library Now** — this takes 2-3 minutes for large libraries
+10. Go to the **Search** page and start fixing subtitles!
+
+---
+
+## How to Find Your Plex Token
+
+**Method 1 — From Plex Web (recommended):**
+1. Open [app.plex.tv/desktop](https://app.plex.tv/desktop) in your browser and sign in
+2. Navigate to any movie in your library
+3. Click the **⋮** menu → **Get Info** → **View XML**
+4. A new tab opens — look at the URL bar and copy the value after `X-Plex-Token=`
+
+**Method 2 — From your unRAID terminal:**
+```bash
+grep -o 'PlexOnlineToken="[^"]*"' "/mnt/user/appdata/PlexMediaServer/Library/Application Support/Plex Media Server/Preferences.xml"
+```
 
 ---
 
@@ -170,15 +202,15 @@ It does NOT transcribe audio — it's language-agnostic and works with any langu
 ## Roadmap
 
 - [x] Kodi library scraping (movies + TV episodes)
+- [x] Plex library scraping (movies + TV episodes)
+- [x] Emby library scraping (movies + TV episodes)
+- [x] Jellyfin library scraping (movies + TV episodes)
 - [x] Poster-rich search with plot summaries
 - [x] One-click subtitle sync with ffsubsync
 - [x] Batch TV season sync
 - [x] Backup and restore system
-- [x] Auto-detection of Kodi library paths
+- [x] Auto-detection of library paths (all sources)
 - [x] Light/dark theme
-- [ ] 🔜 **Plex** library support
-- [ ] 🔜 **Jellyfin** library support
-- [ ] 🔜 **Emby** library support
 - [ ] 🔜 **Subtitle download** — search and download subtitles directly from OpenSubtitles, SubDL, Podnapisi, and other providers
 - [ ] 🔜 **Download + sync in one step** — find, download, and fix subtitles without leaving the couch
 

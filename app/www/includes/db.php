@@ -83,7 +83,37 @@ class DB {
              CASE status WHEN \'running\' THEN 0 WHEN \'pending\' THEN 1 ELSE 2 END,
              created_at DESC LIMIT 50'
         );
-        return $stmt->fetchAll();
+        $items = $stmt->fetchAll();
+
+        // Enrich with poster URLs by matching video paths
+        foreach ($items as &$item) {
+            $item['poster_url'] = '';
+            $videoDir = dirname($item['video_path'] ?? '');
+            if (!$videoDir || $videoDir === '.') continue;
+
+            // Try movies first
+            $ms = self::get()->prepare('SELECT poster_url FROM movies WHERE folder_path = ? LIMIT 1');
+            $ms->execute([$videoDir]);
+            $row = $ms->fetch();
+            if ($row && $row['poster_url']) {
+                $item['poster_url'] = $row['poster_url'];
+                continue;
+            }
+
+            // Try TV episodes
+            $es = self::get()->prepare(
+                'SELECT ts.poster_url FROM tv_episodes te
+                 JOIN tv_shows ts ON ts.id = te.show_id
+                 WHERE te.folder_path = ? LIMIT 1'
+            );
+            $es->execute([$videoDir]);
+            $row = $es->fetch();
+            if ($row && $row['poster_url']) {
+                $item['poster_url'] = $row['poster_url'];
+            }
+        }
+        unset($item);
+        return $items;
     }
 
     public static function getNextQueueItem(): ?array {

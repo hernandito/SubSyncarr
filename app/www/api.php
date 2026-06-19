@@ -25,6 +25,24 @@ register_shutdown_function(function() {
 require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/sync.php';
 
+function getScraper() {
+    $sourceType = DB::getSetting('source_type', 'kodi');
+    switch ($sourceType) {
+        case 'plex':
+            require_once __DIR__ . '/includes/scraper_plex.php';
+            return new PlexScraper();
+        case 'emby':
+            require_once __DIR__ . '/includes/scraper_emby.php';
+            return new EmbyScraper('emby');
+        case 'jellyfin':
+            require_once __DIR__ . '/includes/scraper_emby.php';
+            return new EmbyScraper('jellyfin');
+        default:
+            require_once __DIR__ . '/includes/scraper.php';
+            return new KodiScraper();
+    }
+}
+
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 try {
@@ -112,28 +130,26 @@ try {
             break;
 
         case 'scrape':
-            require_once __DIR__ . '/includes/scraper.php';
-            $scraper = new KodiScraper();
+            $scraper = getScraper();
             echo json_encode($scraper->scrapeAll());
             break;
 
         case 'test_connection':
-            require_once __DIR__ . '/includes/scraper.php';
-            $scraper = new KodiScraper();
+            $scraper = getScraper();
             echo json_encode($scraper->testConnection());
             break;
 
         case 'detect_paths':
-            require_once __DIR__ . '/includes/scraper.php';
-            $scraper = new KodiScraper();
+            $sourceType = DB::getSetting('source_type', 'kodi');
+            $scraper = getScraper();
             $paths = $scraper->detectPaths();
 
             // Auto-save detected roots
             if ($paths['movies']) {
-                DB::setSetting('kodi_movie_root', $paths['movies']['root']);
+                DB::setSetting("{$sourceType}_movie_root", $paths['movies']['root']);
             }
             if ($paths['tv']) {
-                DB::setSetting('kodi_tv_root', $paths['tv']['root']);
+                DB::setSetting("{$sourceType}_tv_root", $paths['tv']['root']);
             }
             if ($paths['ok']) {
                 DB::setSetting('paths_detected', '1');
@@ -144,7 +160,13 @@ try {
         case 'get_settings':
             $keys = ['source_type', 'kodi_host', 'kodi_port', 'kodi_user', 'kodi_pass',
                       'plex_host', 'plex_port', 'plex_token',
-                      'kodi_movie_root', 'kodi_tv_root', 'paths_detected',
+                      'emby_host', 'emby_port', 'emby_api_key',
+                      'jellyfin_host', 'jellyfin_port', 'jellyfin_api_key',
+                      'kodi_movie_root', 'kodi_tv_root',
+                      'plex_movie_root', 'plex_tv_root',
+                      'emby_movie_root', 'emby_tv_root',
+                      'jellyfin_movie_root', 'jellyfin_tv_root',
+                      'paths_detected',
                       'setup_complete', 'last_scrape', 'scrape_interval'];
             $settings = [];
             foreach ($keys as $k) { $settings[$k] = DB::getSetting($k); }
@@ -156,7 +178,12 @@ try {
             if (!$input) { echo json_encode(['error' => 'Invalid JSON']); break; }
             $allowed = ['source_type', 'kodi_host', 'kodi_port', 'kodi_user', 'kodi_pass',
                          'plex_host', 'plex_port', 'plex_token',
+                         'emby_host', 'emby_port', 'emby_api_key',
+                         'jellyfin_host', 'jellyfin_port', 'jellyfin_api_key',
                          'kodi_movie_root', 'kodi_tv_root',
+                         'plex_movie_root', 'plex_tv_root',
+                         'emby_movie_root', 'emby_tv_root',
+                         'jellyfin_movie_root', 'jellyfin_tv_root',
                          'setup_complete', 'scrape_interval'];
             foreach ($input as $k => $v) {
                 if (in_array($k, $allowed)) { DB::setSetting($k, (string) $v); }
