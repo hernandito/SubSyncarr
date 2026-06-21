@@ -14,8 +14,6 @@
   <a href="https://github.com/hernandito/SubSyncarr/releases"><img src="https://img.shields.io/github/v/release/hernandito/SubSyncarr?style=flat-square" alt="Release"></a>
 </p>
 
-[![Buy Me A Coffee](https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png)](https://www.buymeacoffee.com/hernandito)
-
 
 
 ---
