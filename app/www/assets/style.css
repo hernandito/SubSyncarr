@@ -288,6 +288,7 @@ body {
 .bmc-img {
   height: 20px; display: block;
   transition: filter 0.18s;
+  opacity: .75;
 }
 /* Dark theme: logo text is dark, so lighten it when background is transparent */
 [data-theme="dark"] .bmc-img {
