@@ -12,8 +12,10 @@
 <p align="center">
   <a href="https://hub.docker.com/r/hernandito/subsyncarr"><img src="https://img.shields.io/docker/pulls/hernandito/subsyncarr?style=flat-square" alt="Docker Pulls"></a>
   <a href="https://github.com/hernandito/SubSyncarr/releases"><img src="https://img.shields.io/github/v/release/hernandito/SubSyncarr?style=flat-square" alt="Release"></a>
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support%20me-yellow?logo=buy-me-a-coffee&style=flat-square)](https://www.buymeacoffee.com/hernandito)
 
+<a href="https://www.buymeacoffee.com/hernandito" target="_blank">
+  <img src="https://img.buymeacoffee.com/button-api/?text=Buy me a coffee&emoji=&slug=hernandito&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff" alt="Buy me a coffee" width="150">
+</a>
 
 </p>
 
