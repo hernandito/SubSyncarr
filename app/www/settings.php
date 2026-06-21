@@ -72,11 +72,11 @@
       </div>
       <div class="field">
         <label>Username</label>
-        <input type="text" id="kodi_user" placeholder="kodi">
+        <input type="text" id="kodi_user" autocomplete="off" placeholder="kodi">
       </div>
       <div class="field">
         <label>Password</label>
-        <input type="password" id="kodi_pass" placeholder="kodi">
+        <input type="password" id="kodi_pass" autocomplete="new-password" placeholder="kodi">
       </div>
       <button class="btn btn-scan" onclick="testConnection()" id="btnTestConnection">Test Connection</button>
       <span id="testResult" style="margin-left:0.75rem;font-size:0.85rem"></span>
@@ -101,7 +101,7 @@
       </div>
       <div class="field">
         <label>Plex Token</label>
-        <input type="text" id="plex_token" placeholder="Your X-Plex-Token">
+        <input type="text" id="plex_token" autocomplete="off" placeholder="Your X-Plex-Token">
         <div style="font-size:0.75rem;color:var(--text-faint);margin-top:0.3rem;line-height:1.7">
           <strong>How to find your token:</strong><br>
           1. Open <a href="https://app.plex.tv/desktop" target="_blank" style="color:var(--accent)">app.plex.tv/desktop</a> → click any movie → <em>Get Info</em> → <em>View XML</em> → copy the value after <code>X-Plex-Token=</code> in the URL bar<br>
@@ -131,7 +131,7 @@
       </div>
       <div class="field">
         <label>API Key</label>
-        <input type="text" id="emby_api_key" placeholder="Your Emby API key">
+        <input type="text" id="emby_api_key" autocomplete="off" placeholder="Your Emby API key">
         <div style="font-size:0.75rem;color:var(--text-faint);margin-top:0.3rem;line-height:1.7">
           <strong>How to create an API key:</strong><br>
           Emby Dashboard → Settings → Advanced → API Keys → click the <strong>+</strong> button → name it "SubSyncarr" → copy the generated key.
@@ -158,7 +158,7 @@
       </div>
       <div class="field">
         <label>API Key</label>
-        <input type="text" id="jellyfin_api_key" placeholder="Your Jellyfin API key">
+        <input type="text" id="jellyfin_api_key" autocomplete="off" placeholder="Your Jellyfin API key">
         <div style="font-size:0.75rem;color:var(--text-faint);margin-top:0.3rem;line-height:1.7">
           <strong>How to create an API key:</strong><br>
           Jellyfin Dashboard → Advanced → API Keys → click the <strong>+</strong> button → name it "SubSyncarr" → copy the generated key.
@@ -280,6 +280,138 @@
       </div>
     </div>
 
+    <!-- Subtitle Providers -->
+    <div class="settings-group">
+      <div class="settings-group-title">Subtitle Providers</div>
+      <div style="font-size:0.82rem;color:var(--text-dim);margin-bottom:1rem;line-height:1.6">
+        Configure subtitle download providers. When enabled, a "Find Subtitles" button appears on scan results,
+        letting you search, download, and auto-sync subtitles in one step.
+      </div>
+
+      <div class="field">
+        <label>Preferred Language</label>
+        <select id="sub_language">
+          <option value="en">English</option>
+          <option value="es">Spanish</option>
+          <option value="fr">French</option>
+          <option value="de">German</option>
+          <option value="it">Italian</option>
+          <option value="pt">Portuguese</option>
+          <option value="ru">Russian</option>
+          <option value="zh">Chinese</option>
+          <option value="ja">Japanese</option>
+          <option value="ko">Korean</option>
+          <option value="ar">Arabic</option>
+          <option value="nl">Dutch</option>
+          <option value="pl">Polish</option>
+          <option value="sv">Swedish</option>
+          <option value="tr">Turkish</option>
+        </select>
+      </div>
+
+      <!-- OpenSubtitles.com -->
+      <div style="background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius-sm);padding:1rem;margin-bottom:0.75rem">
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem">
+          <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-weight:600;font-size:0.9rem">
+            <input type="checkbox" id="sub_opensubtitles_enabled" style="accent-color:var(--accent)"> OpenSubtitles.com
+          </label>
+          <span style="font-size:0.75rem;color:var(--text-faint)">— largest subtitle database</span>
+        </div>
+        <div class="field">
+          <label>API Key</label>
+          <input type="text" id="sub_opensubtitles_api_key" autocomplete="off" placeholder="Your API consumer key">
+          <div style="font-size:0.72rem;color:var(--text-faint);margin-top:0.2rem">
+            Get your key at <a href="https://www.opensubtitles.com/en/consumers" target="_blank" style="color:var(--accent)">opensubtitles.com/consumers</a>
+          </div>
+        </div>
+        <div class="field">
+          <label>Username</label>
+          <input type="text" id="sub_opensubtitles_username" autocomplete="off" placeholder="Your opensubtitles.com username">
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" id="sub_opensubtitles_password" autocomplete="new-password" placeholder="Your opensubtitles.com password">
+        </div>
+        <button class="btn btn-scan" onclick="testProvider('opensubtitles')">Test OpenSubtitles</button>
+        <span id="testResultOS" style="margin-left:0.75rem;font-size:0.85rem"></span>
+      </div>
+
+      <!-- SubDL -->
+      <div style="background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius-sm);padding:1rem;margin-bottom:0.75rem">
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem">
+          <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-weight:600;font-size:0.9rem">
+            <input type="checkbox" id="sub_subdl_enabled" style="accent-color:var(--accent)"> SubDL
+          </label>
+          <span style="font-size:0.75rem;color:var(--text-faint)">— curated, high quality</span>
+        </div>
+        <div class="field">
+          <label>API Key</label>
+          <input type="text" id="sub_subdl_api_key" autocomplete="off" placeholder="Your SubDL API key">
+          <div style="font-size:0.72rem;color:var(--text-faint);margin-top:0.2rem">
+            Get your free key at <a href="https://subdl.com" target="_blank" style="color:var(--accent)">subdl.com</a> (register → profile → API)
+          </div>
+        </div>
+        <button class="btn btn-scan" onclick="testProvider('subdl')">Test SubDL</button>
+        <span id="testResultSubDL" style="margin-left:0.75rem;font-size:0.85rem"></span>
+      </div>
+
+      <!-- Podnapisi -->
+      <div style="background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius-sm);padding:1rem;margin-bottom:0.75rem">
+        <div style="display:flex;align-items:center;gap:0.5rem">
+          <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-weight:600;font-size:0.9rem">
+            <input type="checkbox" id="sub_podnapisi_enabled" style="accent-color:var(--accent)"> Podnapisi
+          </label>
+          <span style="font-size:0.75rem;color:var(--text-faint)">— free, no account needed</span>
+        </div>
+        <button class="btn btn-scan" style="margin-top:0.5rem" onclick="testProvider('podnapisi')">Test Podnapisi</button>
+        <span id="testResultPod" style="margin-left:0.75rem;font-size:0.85rem"></span>
+      </div>
+
+      <!-- Addic7ed -->
+      <div style="background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius-sm);padding:1rem;margin-bottom:0.75rem">
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem">
+          <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-weight:600;font-size:0.9rem">
+            <input type="checkbox" id="sub_addic7ed_enabled" style="accent-color:var(--accent)"> Addic7ed
+          </label>
+          <span style="font-size:0.75rem;color:var(--text-faint)">— TV series specialist, login optional</span>
+        </div>
+        <div class="field">
+          <label>Username (optional — increases download limit)</label>
+          <input type="text" id="sub_addic7ed_username" autocomplete="off" placeholder="Your Addic7ed username">
+        </div>
+        <div class="field">
+          <label>Password (optional)</label>
+          <input type="password" id="sub_addic7ed_password" autocomplete="new-password" placeholder="Your Addic7ed password">
+        </div>
+        <button class="btn btn-scan" onclick="testProvider('addic7ed')">Test Addic7ed</button>
+        <span id="testResultAddic7ed" style="margin-left:0.75rem;font-size:0.85rem"></span>
+      </div>
+
+      <!-- YIFY -->
+      <div style="background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius-sm);padding:1rem;margin-bottom:0.75rem">
+        <div style="display:flex;align-items:center;gap:0.5rem">
+          <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-weight:600;font-size:0.9rem">
+            <input type="checkbox" id="sub_yify_enabled" style="accent-color:var(--accent)"> YIFY Subtitles
+          </label>
+          <span style="font-size:0.75rem;color:var(--text-faint)">— movie-focused, no account needed</span>
+        </div>
+        <button class="btn btn-scan" style="margin-top:0.5rem" onclick="testProvider('yify')">Test YIFY</button>
+        <span id="testResultYIFY" style="margin-left:0.75rem;font-size:0.85rem"></span>
+      </div>
+
+      <!-- Gestdown -->
+      <div style="background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius-sm);padding:1rem;margin-bottom:0.75rem">
+        <div style="display:flex;align-items:center;gap:0.5rem">
+          <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-weight:600;font-size:0.9rem">
+            <input type="checkbox" id="sub_gestdown_enabled" style="accent-color:var(--accent)"> Gestdown
+          </label>
+          <span style="font-size:0.75rem;color:var(--text-faint)">— good European coverage, no account needed</span>
+        </div>
+        <button class="btn btn-scan" style="margin-top:0.5rem" onclick="testProvider('gestdown')">Test Gestdown</button>
+        <span id="testResultGestdown" style="margin-left:0.75rem;font-size:0.85rem"></span>
+      </div>
+    </div>
+
     <!-- Save -->
     <div style="display:flex;gap:0.75rem;margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--border);flex-wrap:wrap;align-items:center">
       <button class="btn btn-success btn-lg" onclick="saveSettings()">Save Settings</button>
@@ -292,7 +424,8 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const fields = ['kodi_host','kodi_port','kodi_user','kodi_pass','plex_host','plex_port','plex_token','emby_host','emby_port','emby_api_key','jellyfin_host','jellyfin_port','jellyfin_api_key','kodi_movie_root','kodi_tv_root','plex_movie_root','plex_tv_root','emby_movie_root','emby_tv_root','jellyfin_movie_root','jellyfin_tv_root','scrape_interval'];
+const fields = ['kodi_host','kodi_port','kodi_user','kodi_pass','plex_host','plex_port','plex_token','emby_host','emby_port','emby_api_key','jellyfin_host','jellyfin_port','jellyfin_api_key','kodi_movie_root','kodi_tv_root','plex_movie_root','plex_tv_root','emby_movie_root','emby_tv_root','jellyfin_movie_root','jellyfin_tv_root','scrape_interval','sub_opensubtitles_api_key','sub_opensubtitles_username','sub_opensubtitles_password','sub_subdl_api_key','sub_addic7ed_username','sub_addic7ed_password','sub_language'];
+const checkboxFields = ['sub_opensubtitles_enabled','sub_subdl_enabled','sub_podnapisi_enabled','sub_addic7ed_enabled','sub_yify_enabled','sub_gestdown_enabled'];
 
 // ── Load settings ──────────────────────────────────────────────────────
 async function loadSettings() {
@@ -302,6 +435,10 @@ async function loadSettings() {
     fields.forEach(f => {
       const el = document.getElementById(f);
       if (el && s[f] !== undefined) el.value = s[f];
+    });
+    checkboxFields.forEach(f => {
+      const el = document.getElementById(f);
+      if (el && s[f] !== undefined) el.checked = s[f] === '1';
     });
     const src = s.source_type || 'kodi';
     setSourceType(src);
@@ -356,6 +493,7 @@ document.querySelectorAll('input[name="source_type"]').forEach(radio => {
 async function saveSettings() {
   const data = { setup_complete: '1' };
   fields.forEach(f => { const el = document.getElementById(f); if (el) data[f] = el.value; });
+  checkboxFields.forEach(f => { const el = document.getElementById(f); if (el) data[f] = el.checked ? '1' : '0'; });
   const srcRadio = document.querySelector('input[name="source_type"]:checked');
   data.source_type = srcRadio ? srcRadio.value : 'kodi';
   try {
@@ -519,6 +657,36 @@ function toast(msg, type) {
   t.textContent = msg;
   t.className = 'toast toast-' + (type || 'info') + ' show';
   setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+// ── Test Subtitle Provider ────────────────────────────────────────────
+async function testProvider(provider) {
+  await saveSettings();
+  const resultSpans = {
+    opensubtitles: document.getElementById('testResultOS'),
+    subdl: document.getElementById('testResultSubDL'),
+    podnapisi: document.getElementById('testResultPod'),
+    addic7ed: document.getElementById('testResultAddic7ed'),
+    yify: document.getElementById('testResultYIFY'),
+    gestdown: document.getElementById('testResultGestdown'),
+  };
+  const result = resultSpans[provider];
+  if (!result) return;
+  result.innerHTML = '<span class="spinner"></span>';
+
+  try {
+    const r = await fetch('api.php?action=test_provider', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ provider: provider })
+    });
+    const data = await r.json();
+    result.innerHTML = data.ok
+      ? '<span style="color:var(--success)">✓ ' + data.message + '</span>'
+      : '<span style="color:var(--danger)">✗ ' + (data.error || 'Test failed') + '</span>';
+  } catch(e) {
+    result.innerHTML = '<span style="color:var(--danger)">Error: ' + e.message + '</span>';
+  }
 }
 
 function toggleTheme() {

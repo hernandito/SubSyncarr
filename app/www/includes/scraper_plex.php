@@ -257,7 +257,7 @@ class PlexScraper {
         if (strpos($plexPath, $this->movieRoot) !== 0) return null;
 
         $relative = substr($plexPath, strlen($this->movieRoot));
-        if (strpos($relative, '..') !== false) return null;
+        if (preg_match('#(^|/)\.\.(/|$)#', $relative)) return null;
 
         $topFolder = explode('/', $relative)[0];
         return '/movies/' . $topFolder;
@@ -272,7 +272,7 @@ class PlexScraper {
         if (strpos($plexPath, $this->tvRoot) !== 0) return null;
 
         $relative = substr($plexPath, strlen($this->tvRoot));
-        if (strpos($relative, '..') !== false) return null;
+        if (preg_match('#(^|/)\.\.(/|$)#', $relative)) return null;
 
         return '/tv/' . $relative;
     }

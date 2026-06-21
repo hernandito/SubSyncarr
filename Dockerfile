@@ -23,7 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # ── Install ffsubsync into a venv (keeps system clean) ──────────────────
 RUN python3 -m venv /opt/ffsubsync && \
-    /opt/ffsubsync/bin/pip install --no-cache-dir ffsubsync && \
+    /opt/ffsubsync/bin/pip install --no-cache-dir ffsubsync requests beautifulsoup4 && \
     ln -s /opt/ffsubsync/bin/ffsubsync /usr/local/bin/ffsubsync && \
     ln -s /opt/ffsubsync/bin/ffs /usr/local/bin/ffs
 
@@ -39,6 +39,7 @@ RUN sed -i 's|listen = .*|listen = /run/php/php-fpm.sock|' /etc/php/*/fpm/pool.d
 # ── Copy application files ──────────────────────────────────────────────
 COPY root/ /
 COPY app/www/ /var/www/html/
+COPY app/subtitle_search.py /app/subtitle_search.py
 
 # ── Set permissions ─────────────────────────────────────────────────────
 RUN rm -f /etc/nginx/sites-enabled/default && \

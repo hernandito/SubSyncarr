@@ -103,6 +103,13 @@ body {
 }
 .search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
 .search-input::placeholder { color: var(--text-faint); }
+.search-clear {
+  position: absolute; right: 0.9rem; top: 50%; transform: translateY(-50%);
+  background: none; border: none; color: var(--text-faint); cursor: pointer;
+  font-size: 1.2rem; line-height: 1; padding: 0.3rem; display: none;
+  border-radius: 50%; transition: all 0.15s;
+}
+.search-clear:hover { color: var(--text); background: var(--surface-alt); }
 .search-icon {
   position: absolute; left: 0.9rem; top: 50%; transform: translateY(-50%);
   color: var(--text-faint); pointer-events: none;
@@ -167,7 +174,7 @@ body {
 .selected-imdb { font-size: 0.8rem; margin-bottom: 0.75rem; }
 .selected-imdb a { color: var(--accent); text-decoration: none; }
 .selected-imdb a:hover { text-decoration: underline; }
-.selected-path { font-size: 0.75rem; color: var(--text-faint); word-break: break-all; }
+.selected-path { font-size: 0.75rem; color: var(--text-faint); word-break: normal; }
 
 /* ── Season/Episode Tree (TV) ─────────────────────────────────────────── */
 .season-group { margin-bottom: 0.5rem; }
@@ -209,11 +216,16 @@ body {
   margin-bottom: 0.6rem; border: 1px solid transparent;
 }
 .file-pair:hover { border-color: var(--border); }
+.pair-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 0.75rem; margin-bottom: 0.5rem; flex-wrap: wrap;
+}
 .pair-video {
   font-weight: 500; font-size: 0.85rem; color: var(--accent);
-  margin-bottom: 0.5rem; word-break: break-all;
+  word-break: break-all; flex: 1; min-width: 0;
 }
 .pair-video .size { color: var(--text-dim); font-weight: 400; font-size: 0.8rem; }
+.pair-find-btn { flex-shrink: 0; }
 .embedded-tracks { margin: 0.4rem 0; padding: 0.4rem 0.6rem; background: var(--surface-alt); border-radius: 4px; }
 .embedded-label { font-size: 0.7rem; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.2rem; }
 .embedded-track { font-size: 0.78rem; color: var(--text-dim); }
@@ -260,6 +272,10 @@ body {
   width: 120px; height: 180px; border-radius: var(--radius-sm); object-fit: cover;
   flex-shrink: 0; background: var(--surface-alt);
   box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+.qi-checkbox {
+  width: 18px; height: 18px; flex-shrink: 0; cursor: pointer;
+  accent-color: var(--accent); margin-top: 0.2rem;
 }
 .qi-poster-empty {
   width: 120px; height: 180px; border-radius: var(--radius-sm); flex-shrink: 0;
@@ -374,7 +390,45 @@ body {
 .nav-badge-active { background: var(--accent); color: #fff; animation: pulse 1.5s infinite; }
 .nav-badge-done { background: var(--success); color: #fff; }
 
-/* Empty state */
+/* ── Subtitle Search Results ───────────────────────────────────────────── */
+.sub-search-panel {
+  display: none; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 1.25rem; margin-bottom: 1rem;
+}
+.sub-result {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.75rem; background: var(--bg); border-radius: var(--radius-sm);
+  margin-bottom: 0.5rem; border: 1px solid transparent;
+  transition: border-color 0.15s;
+}
+.sub-result:hover { border-color: var(--border); }
+.sub-result-info { flex: 1; min-width: 0; }
+.sub-result-name { font-weight: 600; font-size: 0.88rem; margin-bottom: 0.15rem; word-break: break-all; }
+.sub-result-meta { font-size: 0.78rem; color: var(--text-dim); }
+.sub-result-provider {
+  font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+  padding: 0.15rem 0.45rem; border-radius: 3px;
+  background: var(--accent-glow); color: var(--accent); white-space: nowrap;
+}
+.sub-result-lang {
+  font-size: 0.75rem; font-weight: 700;
+  padding: 0.2rem 0.55rem; border-radius: 3px;
+  background: #e8f4f8; color: #1a6b8a; white-space: nowrap;
+}
+[data-theme="dark"] .sub-result-lang {
+  background: rgba(26, 107, 138, 0.2); color: #6bc4e8;
+}
+.sub-result-hash {
+  background: var(--success-dim); color: var(--success);
+}
+.sub-result-hi { font-size: 0.7rem; color: var(--warning); margin-left: 0.3rem; }
+.btn-download-sync { background: var(--success); color: #000; }
+.btn-download-sync:hover { background: #2cc68a; }
+.btn-download-only { background: var(--surface-alt); color: var(--text-dim); border: 1px solid var(--border); }
+.btn-download-only:hover { color: var(--text); }
+
+/* ── Empty state */
 .queue-empty {
   text-align: center; padding: 2.5rem 1rem; color: var(--text-dim); font-size: 0.92rem;
 }

@@ -148,6 +148,20 @@ class DB {
         self::get()->exec("DELETE FROM sync_queue");
     }
 
+    public static function clearFailedQueue(): void {
+        self::get()->exec("DELETE FROM sync_queue WHERE status = 'failed'");
+    }
+
+    public static function clearQueueItems(array $ids): int {
+        if (empty($ids)) return 0;
+        // Sanitize to integers
+        $ids = array_map('intval', $ids);
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = self::get()->prepare("DELETE FROM sync_queue WHERE id IN ($placeholders)");
+        $stmt->execute($ids);
+        return $stmt->rowCount();
+    }
+
     public static function getStats(): array {
         $db = self::get();
         return [

@@ -18,7 +18,7 @@
 
 ## What It Does
 
-SubSyncarr connects to your **Kodi**, **Plex**, **Emby**, or **Jellyfin** media library, scrapes your movies and TV shows, and gives you a clean web interface to fix subtitle timing — all from your phone, tablet, or browser.
+SubSyncarr connects to your **Kodi**, **Plex**, **Emby**, or **Jellyfin** media library, scrapes your movies and TV shows, and gives you a clean web interface to fix subtitle timing — and now **download subtitles** directly from multiple providers — all from your phone, tablet, or browser.
 
 Have you ever sat down to watch a movie or show and find that the subs are out of sync? You hunt for other subs and struggle to find something that works. With SubSyncarr, a movie/series search, a couple button clicks, and in about 3 minutes, you will have a properly synchronized subtitle; all **without leaving the couch!**
 
@@ -28,11 +28,15 @@ It uses [ffsubsync](https://github.com/smacke/ffsubsync) under the hood, which a
 
 - **Kodi, Plex, Emby & Jellyfin support** — connect to any of the four major media servers; switch anytime from Settings
 - **Search with poster art** — type a movie or TV show name and see results with posters, ratings, genres, and plot summaries
+- **Download subtitles** — search and download from OpenSubtitles.com, SubDL, Gestdown, YIFY, Podnapisi, and Addic7ed, in any language
+- **Download & Sync in one click** — find a subtitle, download it, and auto-sync the timing in a single step
+- **Per-episode or whole-season search** — grab subtitles for the one episode you're watching, or the entire season at once
+- **Multi-language** — download English, Spanish, French, and 18+ other languages; each saved with the correct language suffix (.en.srt, .es.srt)
 - **Smart folder scanning** — detects external subtitle files (.srt, .ass, .ssa, .sub, .vtt) and shows embedded tracks for reference
 - **One-click sync** — ffsubsync analyzes the audio and corrects subtitle timing automatically
 - **Your existing Subtitles are SAFE** — every subtitle is backed up before modification, with one-click restore
 - **Batch TV season sync** — fix an entire season's subtitles in one click
-- **Live sync queue** — animated progress bar, elapsed timer, and human-readable results
+- **Live sync queue** — animated progress bar, elapsed timer, human-readable results, and per-job management (clear selected/failed/all)
 - **Auto-detection** — automatically detects your library paths during setup
 - **Couch-friendly** — large posters, big tap targets, designed for phone and tablet use
 - **Does NOT touch embedded subtitles** — these subs are assumed to be correct as they come from the source
@@ -211,8 +215,26 @@ It does NOT transcribe audio — it's language-agnostic and works with any langu
 - [x] Backup and restore system
 - [x] Auto-detection of library paths (all sources)
 - [x] Light/dark theme
-- [ ] 🔜 **Subtitle download** — search and download subtitles directly from OpenSubtitles, SubDL, Podnapisi, and other providers
-- [ ] 🔜 **Download + sync in one step** — find, download, and fix subtitles without leaving the couch
+- [x] Subtitle download from 6 providers (OpenSubtitles.com, SubDL, Gestdown, YIFY, Podnapisi, Addic7ed)
+- [x] Download + sync in one step
+- [x] Per-episode and whole-season subtitle search
+- [x] Multi-language download with correct language suffixes (.en.srt, .es.srt, etc.)
+- [x] Queue management (clear selected / failed / all)
+- [ ] 🔜 **Subtitle Health Scanner** — background scan of your entire library against your preferred language combinations, flagging missing or potentially-unsynced subtitles for batch processing
+- [ ] 🔜 More subtitle providers (by request via GitHub issues)
+
+## Subtitle Providers
+
+| Provider | Auth | Best For | Status |
+|----------|------|----------|--------|
+| OpenSubtitles.com | API key + login | Everything, hash matching | Stable |
+| SubDL | API key | Curated, high quality | Stable |
+| Gestdown | None | TV series, European | Stable |
+| YIFY Subtitles | None | Movies | Stable |
+| Podnapisi | None | International | Depends on site uptime |
+| Addic7ed | Optional login | TV series | Experimental (may be rate-limited) |
+
+To enable providers: Settings → Subtitle Providers → check the ones you want, enter any required API keys, and click Test to verify.
 
 ---
 

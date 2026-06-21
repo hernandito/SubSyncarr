@@ -69,6 +69,7 @@ $needsSetup = !$pathsDone || !$lastScrape;
     <div class="search-wrap">
       <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input type="text" id="searchInput" class="search-input" placeholder="Search movies and TV shows..." autocomplete="off">
+      <button class="search-clear" id="searchClear" onclick="clearSearch()" title="Clear">✕</button>
       <div class="results-dropdown" id="resultsDropdown"></div>
     </div>
 
@@ -94,6 +95,42 @@ $needsSetup = !$pathsDone || !$lastScrape;
         <span id="scanSummary" style="font-weight:400;font-size:0.8rem;color:var(--text-dim)"></span>
       </div>
       <div id="scanResults"></div>
+      <div id="findSubsBtn" style="display:none;margin-top:1rem;display:none;align-items:center;gap:0.75rem;flex-wrap:wrap">
+        <button class="btn btn-sync btn-lg" id="findAllBtn" onclick="findSubtitles()">Find Subtitles Online</button>
+        <select id="subSearchLang" style="padding:0.45rem 0.6rem;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:0.85rem">
+          <option value="en">English</option>
+          <option value="es">Spanish</option>
+          <option value="fr">French</option>
+          <option value="de">German</option>
+          <option value="it">Italian</option>
+          <option value="pt">Portuguese</option>
+          <option value="ru">Russian</option>
+          <option value="zh">Chinese</option>
+          <option value="ja">Japanese</option>
+          <option value="ko">Korean</option>
+          <option value="ar">Arabic</option>
+          <option value="nl">Dutch</option>
+          <option value="pl">Polish</option>
+          <option value="sv">Swedish</option>
+          <option value="tr">Turkish</option>
+          <option value="da">Danish</option>
+          <option value="fi">Finnish</option>
+          <option value="no">Norwegian</option>
+          <option value="cs">Czech</option>
+          <option value="hu">Hungarian</option>
+          <option value="ro">Romanian</option>
+          <option value="he">Hebrew</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Subtitle search results panel -->
+    <div class="sub-search-panel" id="subSearchPanel">
+      <div class="panel-title">
+        <span>Subtitles Found Online</span>
+        <span id="subSearchSummary" style="font-weight:400;font-size:0.8rem;color:var(--text-dim)"></span>
+      </div>
+      <div id="subSearchResults"></div>
     </div>
   </div>
 
@@ -102,7 +139,11 @@ $needsSetup = !$pathsDone || !$lastScrape;
     <div class="queue-panel">
       <div class="panel-title">
         <span>Sync Queue</span>
-        <button class="btn btn-scan" onclick="clearQueue()">Clear All</button>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+          <button class="btn btn-scan" onclick="clearSelected()">Clear Selected</button>
+          <button class="btn btn-scan" onclick="clearFailed()">Clear Failed</button>
+          <button class="btn btn-scan" onclick="clearQueue()">Clear All</button>
+        </div>
       </div>
       <div id="queueList">
         <div class="queue-empty">
@@ -168,6 +209,8 @@ const dropdown = document.getElementById('resultsDropdown');
 searchInput.addEventListener('input', () => {
   clearTimeout(searchTimer);
   const q = searchInput.value.trim();
+  // Show/hide clear button
+  document.getElementById('searchClear').style.display = q.length > 0 ? 'block' : 'none';
   if (q.length < 2) { dropdown.style.display = 'none'; return; }
   searchTimer = setTimeout(() => doSearch(q), 200);
 });
@@ -175,6 +218,18 @@ searchInput.addEventListener('input', () => {
 searchInput.addEventListener('blur', () => {
   setTimeout(() => dropdown.style.display = 'none', 250);
 });
+
+function clearSearch() {
+  searchInput.value = '';
+  dropdown.style.display = 'none';
+  document.getElementById('searchClear').style.display = 'none';
+  document.getElementById('selectedPanel').style.display = 'none';
+  document.getElementById('scanPanel').style.display = 'none';
+  document.getElementById('subSearchPanel').style.display = 'none';
+  currentItem = null;
+  searchResults = [];
+  searchInput.focus();
+}
 
 async function doSearch(q) {
   try {
@@ -220,11 +275,18 @@ async function doSearch(q) {
 async function selectItem(item) {
   currentItem = item;
   searchInput.value = '';
+  document.getElementById('searchClear').style.display = 'none';
   dropdown.style.display = 'none';
 
   const panel = document.getElementById('selectedPanel');
   const poster = document.getElementById('selPoster');
   const tvEps = document.getElementById('tvEpisodes');
+
+  // Reset all panels
+  document.getElementById('scanPanel').style.display = 'none';
+  document.getElementById('subSearchPanel').style.display = 'none';
+  tvEps.style.display = 'none';
+  tvEps.innerHTML = '';
 
   document.getElementById('selTitle').textContent = item.title + (item.year ? ` (${item.year})` : '');
   poster.src = item.poster_url || '';
@@ -316,6 +378,7 @@ async function selectItem(item) {
 
   panel.style.display = 'block';
   document.getElementById('scanPanel').style.display = 'none';
+  document.getElementById('subSearchPanel').style.display = 'none';
 }
 
 function toggleSeason(el) {
@@ -360,7 +423,15 @@ async function scanFolder(folderPath, recursive) {
     let html = '';
     data.pairs.forEach(pair => {
       html += `<div class="file-pair">`;
-      html += `<div class="pair-video">${esc(pair.video_filename)} <span class="size">(${pair.size_mb} MB)</span></div>`;
+
+      // Header row: filename + per-episode Find button (TV only)
+      const findBtnHtml = (currentItem && currentItem.type === 'tv')
+        ? `<button class="btn btn-scan pair-find-btn" onclick="findSubtitlesForVideo('${escJs(pair.video)}','${escJs(pair.video_filename)}')">Find Subtitles for This Episode</button>`
+        : '';
+      html += `<div class="pair-header">
+        <div class="pair-video" data-video-path="${esc(pair.video)}">${esc(pair.video_filename)} <span class="size">(${pair.size_mb} MB)</span></div>
+        ${findBtnHtml}
+      </div>`;
 
       // Embedded tracks with human-friendly codec names
       if (pair.embedded_tracks && pair.embedded_tracks.length > 0) {
@@ -388,14 +459,214 @@ async function scanFolder(folderPath, recursive) {
           </div>`;
         });
       }
+
+      // Per-episode button now lives in the header row above
       html += '</div>';
     });
 
     scanResults.innerHTML = html;
 
+    // Show "Find Subtitles" button if providers are configured
+    const findBtn = document.getElementById('findSubsBtn');
+    findBtn.style.display = 'flex';
+    findBtn.dataset.folder = folderPath;
+    // Update label based on content type
+    const findAllBtn = document.getElementById('findAllBtn');
+    if (findAllBtn) {
+      const isTV = currentItem && currentItem.type === 'tv';
+      findAllBtn.textContent = isTV ? 'Find Subtitles for Whole Season' : 'Find Subtitles Online';
+    }
+    // Hide per-episode buttons for movies (only one video anyway)
+    // Set default language from settings
+    fetch('api.php?action=get_settings').then(r => r.json()).then(s => {
+      const langSel = document.getElementById('subSearchLang');
+      if (langSel && s.sub_language) langSel.value = s.sub_language;
+    }).catch(() => {});
+
   } catch(e) {
     scanResults.innerHTML = `<div style="color:var(--danger)">Scan error: ${esc(e.message)}</div>`;
   }
+}
+
+// ── Subtitle Search & Download ─────────────────────────────────────────
+// Per-episode search — searches for one specific episode
+async function findSubtitlesForVideo(videoPath, videoFilename) {
+  const item = currentItem;
+  if (!item) return;
+
+  const language = document.getElementById('subSearchLang').value || 'en';
+
+  // Extract season AND episode from this specific video
+  let season = null, episode = null;
+  const seMatch = videoFilename.match(/[Ss](\d{1,2})[Ee](\d{1,2})/);
+  if (seMatch) {
+    season = parseInt(seMatch[1]);
+    episode = parseInt(seMatch[2]);
+  }
+
+  const label = (season && episode)
+    ? `S${String(season).padStart(2,'0')}E${String(episode).padStart(2,'0')}`
+    : videoFilename;
+
+  await executeSubtitleSearch({
+    title: item.title,
+    year: item.year || null,
+    imdb_id: item.imdb_id || '',
+    language: language,
+    season: season,
+    episode: episode,
+    video_path: videoPath,
+  }, `${item.title} — ${label}`);
+}
+
+async function findSubtitles() {
+  const item = currentItem;
+  if (!item) {
+    document.getElementById('subSearchPanel').style.display = 'block';
+    document.getElementById('subSearchResults').innerHTML = '<div style="color:var(--danger)">No item selected</div>';
+    return;
+  }
+
+  const language = document.getElementById('subSearchLang').value || 'en';
+
+  const scanPanel = document.getElementById('scanPanel');
+  const allVideos = scanPanel.querySelectorAll('.pair-video[data-video-path]');
+  const firstVideo = allVideos.length > 0 ? allVideos[0] : null;
+
+  // For TV shows, extract season; only pass episode for single-video scans
+  let season = null, episode = null;
+  if (item.type === 'tv' && firstVideo) {
+    const fname = firstVideo.dataset.videoPath || '';
+    const seMatch = fname.match(/[Ss](\d{1,2})[Ee](\d{1,2})/);
+    if (seMatch) {
+      season = parseInt(seMatch[1]);
+      if (allVideos.length === 1) episode = parseInt(seMatch[2]);
+    }
+    if (!season) {
+      const seasonMatch = fname.match(/Season\s+(\d{1,2})/i);
+      if (seasonMatch) season = parseInt(seasonMatch[1]);
+    }
+  }
+
+  const body = {
+    title: item.title,
+    year: item.year || null,
+    imdb_id: item.imdb_id || '',
+    language: language,
+    season: season,
+    episode: episode,
+  };
+  if (firstVideo) body.video_path = firstVideo.dataset.videoPath;
+
+  const seasonLabel = season ? ` — Season ${season}` : '';
+  await executeSubtitleSearch(body, item.title + seasonLabel);
+}
+
+// Shared search executor used by both whole-season and per-episode searches
+async function executeSubtitleSearch(body, contextLabel) {
+  const panel = document.getElementById('subSearchPanel');
+  const results = document.getElementById('subSearchResults');
+  const summary = document.getElementById('subSearchSummary');
+  const item = currentItem;
+
+  panel.style.display = 'block';
+  results.innerHTML = `<div class="spinner"></div> Searching subtitle providers for ${esc(contextLabel)}...`;
+  summary.textContent = '';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // Find the video path for downloads
+  const scanPanel = document.getElementById('scanPanel');
+  const firstVideo = scanPanel.querySelector('.pair-video[data-video-path]');
+
+  try {
+    const r = await fetch('api.php?action=subtitle_search', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    const data = await r.json();
+
+    if (data.error) {
+      results.innerHTML = `<div style="color:var(--danger)">${esc(data.error)}</div>`;
+      return;
+    }
+
+    if (!data.results || data.results.length === 0) {
+      results.innerHTML = '<div style="color:var(--text-dim);padding:1rem">No subtitles found. Try a different language or enable more providers in Settings.</div>';
+      return;
+    }
+
+    summary.textContent = `${data.results.length} result(s) from ${new Set(data.results.map(r => r.provider_name)).size} provider(s)`;
+
+    // Use the video path from the search body (per-episode) or fall back to first video
+    const videoPath = body.video_path || (firstVideo ? (firstVideo.dataset.videoPath || '') : '');
+
+    results.innerHTML = data.results.map(sub => {
+      const provClass = sub.match_type === 'hash' ? 'sub-result-provider sub-result-hash' : 'sub-result-provider';
+      const hi = sub.hearing_impaired ? '<span class="sub-result-hi">CC/HI</span>' : '';
+      const mt = sub.machine_translated ? '<span style="color:var(--danger);font-size:0.7rem;margin-left:0.3rem">MT</span>' : '';
+      const downloads = sub.download_count > 0 ? `${Number(sub.download_count).toLocaleString()} downloads` : '';
+      const matchBadge = sub.match_type === 'hash' ? ' · Hash match ✓' : '';
+      const meta = [sub.release || sub.filename, downloads, sub.uploader ? 'by ' + sub.uploader : ''].filter(Boolean).join(' · ');
+      const langNames = {en:'English',es:'Spanish',fr:'French',de:'German',it:'Italian',pt:'Portuguese',ru:'Russian',zh:'Chinese',ja:'Japanese',ko:'Korean',ar:'Arabic',nl:'Dutch',pl:'Polish',sv:'Swedish',tr:'Turkish',da:'Danish',fi:'Finnish',no:'Norwegian',cs:'Czech',hu:'Hungarian',ro:'Romanian',he:'Hebrew'};
+      const langDisplay = langNames[sub.language] || (sub.language || '').toUpperCase();
+
+      return `<div class="sub-result">
+        <div class="sub-result-info">
+          <div class="sub-result-name">${esc(sub.filename || sub.release || 'Unknown')}${hi}${mt}</div>
+          <div class="sub-result-meta">${esc(meta)}${matchBadge}</div>
+        </div>
+        <span class="sub-result-lang">${esc(langDisplay)}</span>
+        <span class="${provClass}">${esc(sub.provider_name)}</span>
+        <button class="btn btn-download-sync" onclick="downloadSub('${escJs(sub.provider)}','${escJs(sub.file_id)}','${escJs(videoPath)}','${escJs(item.title)}','${escJs(sub.language || 'en')}',true)">Download & Sync</button>
+        <button class="btn btn-download-only" onclick="downloadSub('${escJs(sub.provider)}','${escJs(sub.file_id)}','${escJs(videoPath)}','${escJs(item.title)}','${escJs(sub.language || 'en')}',false)">Download</button>
+      </div>`;
+    }).join('');
+
+  } catch(e) {
+    results.innerHTML = `<div style="color:var(--danger)">Search error: ${esc(e.message)}</div>`;
+  }
+}
+
+async function downloadSub(provider, fileId, videoPath, title, language, autoSync) {
+  const action = autoSync ? 'Download & sync' : 'Download';
+  if (!confirm(`${action} this subtitle?`)) return;
+
+  toast('Downloading subtitle...', 'info');
+
+  try {
+    const r = await fetch('api.php?action=subtitle_download', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        provider: provider,
+        file_id: fileId,
+        video_path: videoPath,
+        title: title,
+        language: language,
+        auto_sync: autoSync,
+      })
+    });
+    const data = await r.json();
+
+    if (data.error) { toast('Error: ' + data.error, 'error'); return; }
+
+    if (data.ok) {
+      if (data.sync_queued) {
+        toast('Downloaded and queued for sync', 'success');
+        document.querySelectorAll('.nav a[data-page]').forEach(l => l.classList.remove('active'));
+        document.querySelector('[data-page="queue"]').classList.add('active');
+        document.getElementById('pageSearch').style.display = 'none';
+        document.getElementById('pageQueue').style.display = 'block';
+        startQueuePolling();
+      } else {
+        toast('Subtitle downloaded successfully', 'success');
+        // Re-scan to show the new file
+        const folder = document.getElementById('findSubsBtn').dataset.folder;
+        if (folder) scanFolder(folder);
+      }
+    }
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
 // Translate technical codec names to human-friendly
@@ -545,6 +816,11 @@ async function refreshQueue() {
       badge.className = '';
     }
 
+    // Remember which checkboxes were checked before re-rendering
+    const checkedIds = new Set(
+      Array.from(document.querySelectorAll('.qi-checkbox:checked')).map(cb => cb.dataset.queueId)
+    );
+
     list.innerHTML = items.map(item => {
       const subFile = item.subtitle_path ? item.subtitle_path.split('/').pop() : '';
       const logId = 'log-' + item.id;
@@ -571,6 +847,7 @@ async function refreshQueue() {
           : `<div class="qi-poster-empty">🎬</div>`;
 
         return `<div class="queue-item queue-item-running">
+          <input type="checkbox" class="qi-checkbox" data-queue-id="${item.id}">
           ${posterHtml}
           <div class="qi-content">
           <div class="qi-header">
@@ -606,6 +883,7 @@ async function refreshQueue() {
           : `<div class="qi-poster-empty">🎬</div>`;
 
         return `<div class="queue-item queue-item-done">
+          <input type="checkbox" class="qi-checkbox" data-queue-id="${item.id}">
           ${posterHtml}
           <div class="qi-content">
           <div class="qi-header">
@@ -633,6 +911,7 @@ async function refreshQueue() {
           : `<div class="qi-poster-empty">🎬</div>`;
 
         return `<div class="queue-item queue-item-failed">
+          <input type="checkbox" class="qi-checkbox" data-queue-id="${item.id}">
           ${posterHtml}
           <div class="qi-content">
           <div class="qi-header">
@@ -658,6 +937,7 @@ async function refreshQueue() {
         : `<div class="qi-poster-empty">🎬</div>`;
 
       return `<div class="queue-item">
+        <input type="checkbox" class="qi-checkbox" data-queue-id="${item.id}">
         ${posterHtml}
         <div class="qi-content">
         <div class="qi-header">
@@ -671,6 +951,12 @@ async function refreshQueue() {
         </div>
       </div>`;
     }).join('');
+
+    // Restore previously checked checkboxes
+    checkedIds.forEach(id => {
+      const cb = document.querySelector(`.qi-checkbox[data-queue-id="${id}"]`);
+      if (cb) cb.checked = true;
+    });
 
     if (runningCount > 0) {
       startQueuePolling();
@@ -693,7 +979,30 @@ function stopQueuePolling() {
 }
 
 async function clearQueue() {
+  if (!confirm('Clear ALL items from the queue?')) return;
   await fetch('api.php?action=clear_queue');
+  refreshQueue();
+}
+
+async function clearFailed() {
+  await fetch('api.php?action=clear_failed');
+  toast('Failed items cleared', 'info');
+  refreshQueue();
+}
+
+async function clearSelected() {
+  const checked = document.querySelectorAll('.qi-checkbox:checked');
+  if (checked.length === 0) {
+    toast('No items selected — check the boxes on cards first', 'info');
+    return;
+  }
+  const ids = Array.from(checked).map(cb => parseInt(cb.dataset.queueId));
+  await fetch('api.php?action=clear_selected', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ ids: ids })
+  });
+  toast(`${ids.length} item(s) cleared`, 'info');
   refreshQueue();
 }
 

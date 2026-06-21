@@ -122,6 +122,22 @@ try {
             echo json_encode(['status' => 'cleared']);
             break;
 
+        case 'clear_failed':
+            DB::clearFailedQueue();
+            echo json_encode(['status' => 'cleared']);
+            break;
+
+        case 'clear_selected':
+            $input = json_decode(file_get_contents('php://input'), true);
+            $ids = $input['ids'] ?? [];
+            if (!is_array($ids) || empty($ids)) {
+                echo json_encode(['error' => 'No items selected']);
+                break;
+            }
+            $count = DB::clearQueueItems($ids);
+            echo json_encode(['status' => 'cleared', 'count' => $count]);
+            break;
+
         case 'restore':
             $input = json_decode(file_get_contents('php://input'), true);
             $subtitle = $input['subtitle'] ?? '';
@@ -167,7 +183,14 @@ try {
                       'emby_movie_root', 'emby_tv_root',
                       'jellyfin_movie_root', 'jellyfin_tv_root',
                       'paths_detected',
-                      'setup_complete', 'last_scrape', 'scrape_interval'];
+                      'setup_complete', 'last_scrape', 'scrape_interval',
+                      'sub_opensubtitles_enabled', 'sub_opensubtitles_api_key',
+                      'sub_opensubtitles_username', 'sub_opensubtitles_password',
+                      'sub_subdl_enabled', 'sub_subdl_api_key',
+                      'sub_podnapisi_enabled',
+                      'sub_addic7ed_enabled', 'sub_addic7ed_username', 'sub_addic7ed_password',
+                      'sub_yify_enabled', 'sub_gestdown_enabled',
+                      'sub_language'];
             $settings = [];
             foreach ($keys as $k) { $settings[$k] = DB::getSetting($k); }
             echo json_encode($settings);
@@ -184,7 +207,14 @@ try {
                          'plex_movie_root', 'plex_tv_root',
                          'emby_movie_root', 'emby_tv_root',
                          'jellyfin_movie_root', 'jellyfin_tv_root',
-                         'setup_complete', 'scrape_interval'];
+                         'setup_complete', 'scrape_interval',
+                         'sub_opensubtitles_enabled', 'sub_opensubtitles_api_key',
+                         'sub_opensubtitles_username', 'sub_opensubtitles_password',
+                         'sub_subdl_enabled', 'sub_subdl_api_key',
+                         'sub_podnapisi_enabled',
+                         'sub_addic7ed_enabled', 'sub_addic7ed_username', 'sub_addic7ed_password',
+                         'sub_yify_enabled', 'sub_gestdown_enabled',
+                         'sub_language'];
             foreach ($input as $k => $v) {
                 if (in_array($k, $allowed)) { DB::setSetting($k, (string) $v); }
             }
@@ -193,6 +223,175 @@ try {
 
         case 'stats':
             echo json_encode(DB::getStats());
+            break;
+
+        // ── Test Subtitle Provider ──────────────────────────────────────
+        case 'test_provider':
+            $input = json_decode(file_get_contents('php://input'), true);
+            $provider = $input['provider'] ?? '';
+
+            $providers = [
+                'opensubtitles' => [
+                    'api_key' => DB::getSetting('sub_opensubtitles_api_key', ''),
+                    'username' => DB::getSetting('sub_opensubtitles_username', ''),
+                    'password' => DB::getSetting('sub_opensubtitles_password', ''),
+                ],
+                'subdl' => [
+                    'api_key' => DB::getSetting('sub_subdl_api_key', ''),
+                ],
+                'podnapisi' => [],
+                'addic7ed' => [
+                    'username' => DB::getSetting('sub_addic7ed_username', ''),
+                    'password' => DB::getSetting('sub_addic7ed_password', ''),
+                ],
+                'yify' => [],
+                'gestdown' => [],
+            ];
+
+            $args = json_encode([
+                'provider' => $provider,
+                'providers' => $providers,
+            ]);
+
+            $cmd = '/opt/ffsubsync/bin/python3 /app/subtitle_search.py test '
+                 . escapeshellarg($args) . ' 2>&1';
+            $output = shell_exec($cmd);
+            $result = json_decode($output, true);
+            echo json_encode($result ?: ['ok' => false, 'error' => 'Test failed', 'raw' => $output]);
+            break;
+
+        // ── Subtitle Search ────────────────────────────────────────────
+        case 'subtitle_search':
+            $input = json_decode(file_get_contents('php://input'), true);
+            $title = $input['title'] ?? '';
+            $year = $input['year'] ?? null;
+            $imdbId = $input['imdb_id'] ?? '';
+            $language = $input['language'] ?? DB::getSetting('sub_language', 'en');
+            $videoPath = $input['video_path'] ?? '';
+            $season = $input['season'] ?? null;
+            $episode = $input['episode'] ?? null;
+
+            if (!$title && !$imdbId) {
+                echo json_encode(['error' => 'title or imdb_id required']);
+                break;
+            }
+
+            // Build provider config from settings
+            $providers = [
+                'opensubtitles' => [
+                    'enabled' => DB::getSetting('sub_opensubtitles_enabled', '0') === '1',
+                    'api_key' => DB::getSetting('sub_opensubtitles_api_key', ''),
+                    'username' => DB::getSetting('sub_opensubtitles_username', ''),
+                    'password' => DB::getSetting('sub_opensubtitles_password', ''),
+                ],
+                'subdl' => [
+                    'enabled' => DB::getSetting('sub_subdl_enabled', '0') === '1',
+                    'api_key' => DB::getSetting('sub_subdl_api_key', ''),
+                ],
+                'podnapisi' => [
+                    'enabled' => DB::getSetting('sub_podnapisi_enabled', '0') === '1',
+                ],
+                'addic7ed' => [
+                    'enabled' => DB::getSetting('sub_addic7ed_enabled', '0') === '1',
+                    'username' => DB::getSetting('sub_addic7ed_username', ''),
+                    'password' => DB::getSetting('sub_addic7ed_password', ''),
+                ],
+                'yify' => [
+                    'enabled' => DB::getSetting('sub_yify_enabled', '0') === '1',
+                ],
+                'gestdown' => [
+                    'enabled' => DB::getSetting('sub_gestdown_enabled', '0') === '1',
+                ],
+            ];
+
+            $args = json_encode([
+                'title' => $title,
+                'year' => $year,
+                'imdb_id' => $imdbId,
+                'language' => $language,
+                'video_path' => $videoPath,
+                'season' => $season,
+                'episode' => $episode,
+                'providers' => $providers,
+            ]);
+
+            $cmd = '/opt/ffsubsync/bin/python3 /app/subtitle_search.py search '
+                 . escapeshellarg($args) . ' 2>&1';
+            $output = shell_exec($cmd);
+            $result = json_decode($output, true);
+
+            if ($result === null) {
+                echo json_encode(['error' => 'Search failed', 'raw' => $output]);
+            } else {
+                echo json_encode($result);
+            }
+            break;
+
+        // ── Subtitle Download ──────────────────────────────────────────
+        case 'subtitle_download':
+            $input = json_decode(file_get_contents('php://input'), true);
+            $provider = $input['provider'] ?? '';
+            $fileId = $input['file_id'] ?? '';
+            $videoPath = $input['video_path'] ?? '';
+            $autoSync = (bool) ($input['auto_sync'] ?? false);
+            // Use the language that was actually searched, not the default setting
+            $lang = $input['language'] ?? DB::getSetting('sub_language', 'en');
+
+            if (!$provider || !$fileId || !$videoPath) {
+                echo json_encode(['error' => 'provider, file_id, and video_path required']);
+                break;
+            }
+
+            // Determine output path — save alongside the video with language code
+            $videoDir = dirname($videoPath);
+            $videoBase = pathinfo($videoPath, PATHINFO_FILENAME);
+            $outputPath = "{$videoDir}/{$videoBase}.{$lang}.srt";
+
+            // Build provider config
+            $providers = [
+                'opensubtitles' => [
+                    'api_key' => DB::getSetting('sub_opensubtitles_api_key', ''),
+                    'username' => DB::getSetting('sub_opensubtitles_username', ''),
+                    'password' => DB::getSetting('sub_opensubtitles_password', ''),
+                ],
+                'subdl' => [
+                    'api_key' => DB::getSetting('sub_subdl_api_key', ''),
+                ],
+                'podnapisi' => [],
+                'addic7ed' => [
+                    'username' => DB::getSetting('sub_addic7ed_username', ''),
+                    'password' => DB::getSetting('sub_addic7ed_password', ''),
+                ],
+                'yify' => [],
+                'gestdown' => [],
+            ];
+
+            $args = json_encode([
+                'provider' => $provider,
+                'file_id' => $fileId,
+                'output_path' => $outputPath,
+                'providers' => $providers,
+            ]);
+
+            $cmd = '/opt/ffsubsync/bin/python3 /app/subtitle_search.py download '
+                 . escapeshellarg($args) . ' 2>&1';
+            $output = shell_exec($cmd);
+            $result = json_decode($output, true);
+
+            if ($result === null) {
+                echo json_encode(['error' => 'Download failed', 'raw' => $output]);
+                break;
+            }
+
+            if ($result['ok'] && $autoSync) {
+                // Queue a sync job for the downloaded subtitle
+                $title = $input['title'] ?? basename($videoDir);
+                $queueId = DB::addToQueue($videoPath, $outputPath, $title);
+                $result['sync_queued'] = true;
+                $result['queue_id'] = $queueId;
+            }
+
+            echo json_encode($result);
             break;
 
         default:

@@ -218,20 +218,25 @@ class KodiScraper {
         $kodiPath = $this->extractFirstPath($kodiPath);
         if (!$kodiPath || !$this->movieRoot) return null;
 
-        $decoded = rawurldecode($kodiPath);
+        $attempts = [
+            rawurldecode($kodiPath),
+            rawurldecode(rawurldecode($kodiPath)),
+            $kodiPath,
+        ];
 
-        // Case-insensitive check if path starts with the movie root
-        if (stripos($decoded, $this->movieRoot) !== 0) return null;
+        foreach ($attempts as $decoded) {
+            if (stripos($decoded, $this->movieRoot) === 0) {
+                $relative = substr($decoded, strlen($this->movieRoot));
+                $relative = str_replace('\\', '/', $relative);
+                $folder = dirname($relative);
+                if ($folder === '' || $folder === '.') continue;
+                if (preg_match('#(^|/)\.\.(/|$)#', $relative)) continue;
+                $topFolder = explode('/', $folder)[0];
+                return '/movies/' . $topFolder;
+            }
+        }
 
-        $relative = substr($decoded, strlen($this->movieRoot));
-        $relative = str_replace('\\', '/', $relative);
-        $folder = dirname($relative);
-        if ($folder === '' || $folder === '.') return null;
-        if (strpos($folder, '..') !== false) return null;
-
-        // Just the first level — the movie folder name
-        $topFolder = explode('/', $folder)[0];
-        return '/movies/' . $topFolder;
+        return null;
     }
 
     /**
@@ -240,15 +245,24 @@ class KodiScraper {
      */
     private function tvPathToFile(string $kodiPath): ?string {
         if (!$kodiPath || !$this->tvRoot) return null;
-        $decoded = rawurldecode($kodiPath);
 
-        if (stripos($decoded, $this->tvRoot) !== 0) return null;
+        $attempts = [
+            rawurldecode($kodiPath),
+            rawurldecode(rawurldecode($kodiPath)),
+            $kodiPath,
+        ];
 
-        $relative = substr($decoded, strlen($this->tvRoot));
-        $relative = str_replace('\\', '/', $relative);
-        if (strpos($relative, '..') !== false) return null;
+        foreach ($attempts as $decoded) {
+            if (stripos($decoded, $this->tvRoot) === 0) {
+                $relative = substr($decoded, strlen($this->tvRoot));
+                $relative = str_replace('\\', '/', $relative);
+                // Block actual directory traversal (/../) but allow dots in filenames
+                if (preg_match('#(^|/)\.\.(/|$)#', $relative)) continue;
+                return '/tv/' . $relative;
+            }
+        }
 
-        return '/tv/' . $relative;
+        return null;
     }
 
     /**

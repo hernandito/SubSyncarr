@@ -202,7 +202,7 @@ class EmbyScraper {
         if (!$this->movieRoot || !$path) return null;
         if (strpos($path, $this->movieRoot) !== 0) return null;
         $relative = substr($path, strlen($this->movieRoot));
-        if (strpos($relative, '..') !== false) return null;
+        if (preg_match('#(^|/)\.\.(/|$)#', $relative)) return null;
         $topFolder = explode('/', $relative)[0];
         return '/movies/' . $topFolder;
     }
@@ -214,7 +214,7 @@ class EmbyScraper {
         if (!$this->tvRoot || !$path) return null;
         if (strpos($path, $this->tvRoot) !== 0) return null;
         $relative = substr($path, strlen($this->tvRoot));
-        if (strpos($relative, '..') !== false) return null;
+        if (preg_match('#(^|/)\.\.(/|$)#', $relative)) return null;
         return '/tv/' . $relative;
     }
 
