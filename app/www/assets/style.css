@@ -277,6 +277,30 @@ body {
   width: 18px; height: 18px; flex-shrink: 0; cursor: pointer;
   accent-color: var(--accent); margin-top: 0.2rem;
 }
+
+/* Buy Me a Coffee button — transparent normally, yellow on hover */
+.bmc-btn {
+  display: flex; align-items: center; height: 38px;
+  padding: 0 0.7rem; border-radius: 8px;
+  border: 1px solid var(--border); background: transparent;
+  transition: background 0.18s, border-color 0.18s;
+}
+.bmc-img {
+  height: 20px; display: block;
+  transition: filter 0.18s;
+}
+/* Dark theme: logo text is dark, so lighten it when background is transparent */
+[data-theme="dark"] .bmc-img {
+  filter: brightness(0) invert(1);
+}
+/* On hover: yellow pill background, restore original dark logo in BOTH themes */
+.bmc-btn:hover {
+  background: #ffdd00;
+  border-color: #ffdd00;
+}
+.bmc-btn:hover .bmc-img {
+  filter: none;
+}
 .qi-poster-empty {
   width: 120px; height: 180px; border-radius: var(--radius-sm); flex-shrink: 0;
   background: var(--surface-alt); display: flex; align-items: center; justify-content: center;

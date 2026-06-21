@@ -31,7 +31,12 @@ $needsSetup = !$pathsDone || !$lastScrape;
       <h1>Sub<font style="font-weight:400">Syncarr</font></h1>
       <div class="tagline">Fix out-of-sync subtitles for your media library</div>
     </div>
-    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" style="margin-left:auto" id="themeBtn">☀️</button>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:0.75rem">
+      <a href="https://www.buymeacoffee.com/hernandito" target="_blank" rel="noopener" title="Support SubSyncarr — buy me a coffee" class="bmc-btn">
+        <img src="assets/bmc.png" alt="Buy Me a Coffee" class="bmc-img">
+      </a>
+      <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" id="themeBtn">☀️</button>
+    </div>
   </div>
 
   <!-- Navigation  -->
