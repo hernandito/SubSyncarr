@@ -23,8 +23,8 @@
 <a href="https://www.buymeacoffee.com/hernandito" target="_blank">
   <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png"
        alt="Buy Me a Coffee"
-       width="217"
-       height="60">
+       width="162"
+       height="45">
 </a>
 </p>
 
