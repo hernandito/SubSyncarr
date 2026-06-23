@@ -32,6 +32,16 @@ class SyncHelper {
     }
 
     /**
+     * Format a byte count as a human-readable string (e.g. "23.3 GB", "1.4 MB", "847 KB").
+     */
+    public static function humanSize(int $bytes): string {
+        if ($bytes < 1024) return $bytes . ' B';
+        if ($bytes < 1024 * 1024) return round($bytes / 1024) . ' KB';
+        if ($bytes < 1024 * 1024 * 1024) return round($bytes / (1024 * 1024), 1) . ' MB';
+        return round($bytes / (1024 * 1024 * 1024), 2) . ' GB';
+    }
+
+    /**
      * Scan a folder for video files, their external subs, and embedded tracks.
      */
     public static function scanFolder(string $folder, bool $recursive = false): array {
@@ -90,6 +100,7 @@ class SyncHelper {
                         'path' => $sub,
                         'filename' => basename($sub),
                         'size_kb' => round(filesize($sub) / 1024, 1),
+                        'size_human' => self::humanSize(filesize($sub)),
                         'has_backup' => $hasBackup,
                     ];
                 }
@@ -101,6 +112,7 @@ class SyncHelper {
                 'video' => $vid,
                 'video_filename' => basename($vid),
                 'size_mb' => round(filesize($vid) / (1024 * 1024), 1),
+                'size_human' => self::humanSize(filesize($vid)),
                 'subtitles' => $matchedSubs,
                 'embedded_tracks' => $embedded,
             ];

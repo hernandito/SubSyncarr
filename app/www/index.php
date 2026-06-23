@@ -44,6 +44,7 @@ $needsSetup = !$pathsDone || !$lastScrape;
     <a href="#" class="active" data-page="search">Search</a>
     <a href="#" data-page="queue">Queue<span id="queueBadge"></span></a>
     <a href="settings.php">Settings</a>
+    <a href="advanced.php">Advanced</a>
   </div>
 
   <!-- Stats bar -->
@@ -434,7 +435,7 @@ async function scanFolder(folderPath, recursive) {
         ? `<button class="btn btn-scan pair-find-btn" onclick="findSubtitlesForVideo('${escJs(pair.video)}','${escJs(pair.video_filename)}')">Find Subtitles for This Episode</button>`
         : '';
       html += `<div class="pair-header">
-        <div class="pair-video" data-video-path="${esc(pair.video)}">${esc(pair.video_filename)} <span class="size">(${pair.size_mb} MB)</span></div>
+        <div class="pair-video" data-video-path="${esc(pair.video)}">${esc(pair.video_filename)} <span class="size">(${esc(pair.size_human || (pair.size_mb + ' MB'))})</span></div>
         ${findBtnHtml}
       </div>`;
 
@@ -458,7 +459,7 @@ async function scanFolder(folderPath, recursive) {
           const backupBadge = sub.has_backup ? ' <span style="color:var(--success);font-size:0.7rem">✓ backup exists</span>' : '';
           html += `<div class="sub-row">
             <span class="sub-name">${esc(sub.filename)}${backupBadge}</span>
-            <span class="sub-size">${sub.size_kb} KB</span>
+            <span class="sub-size">${esc(sub.size_human || (sub.size_kb + ' KB'))}</span>
             <button class="btn btn-sync" onclick="syncOne('${escJs(pair.video)}','${escJs(sub.path)}','${escJs(pair.video_filename)}')">Sync</button>
             ${sub.has_backup ? `<button class="btn btn-restore" onclick="restoreOne('${escJs(sub.path)}')">Restore</button>` : ''}
           </div>`;
