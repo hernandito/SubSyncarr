@@ -292,7 +292,7 @@ class KodiScraper {
         }
 
         $result = $this->rpc('VideoLibrary.GetMovies', [
-            'properties' => ['art', 'year', 'imdbnumber', 'rating', 'genre', 'thumbnail', 'file', 'plot'],
+            'properties' => ['art', 'year', 'imdbnumber', 'rating', 'genre', 'thumbnail', 'file', 'plot', 'streamdetails'],
             'sort' => ['order' => 'ascending', 'method' => 'label', 'ignorearticle' => true],
         ]);
 
@@ -301,11 +301,17 @@ class KodiScraper {
         }
 
         $db = DB::get();
-        $db->exec('DELETE FROM movies');
 
-        $stmt = $db->prepare(
-            'INSERT INTO movies (title, year, poster_url, folder_path, imdb_id, rating, genre, plot, scraped_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))'
+        // Mark all existing as stale; upsert in place; sweep what wasn't refreshed at the end.
+        $db->exec("UPDATE movies SET scraped_at = '__stale__'");
+
+        $movieSelect = $db->prepare('SELECT id FROM movies WHERE title=? AND year=? LIMIT 1');
+        $movieInsert = $db->prepare(
+            "INSERT INTO movies (title, year, poster_url, folder_path, imdb_id, rating, genre, plot, scraped_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))"
+        );
+        $movieUpdate = $db->prepare(
+            "UPDATE movies SET poster_url=?, folder_path=?, imdb_id=?, rating=?, genre=?, plot=?, scraped_at=datetime('now') WHERE id=?"
         );
 
         $count = 0;
@@ -326,11 +332,48 @@ class KodiScraper {
             $plot = $movie['plot'] ?? '';
             $plot = str_replace('"', "'", $plot);
 
-            $stmt->execute([$title, $year, $poster, $folder, $imdbId, $rating, $genres, $plot]);
+            $movieSelect->execute([$title, $year]);
+            $existingId = $movieSelect->fetchColumn();
+
+            if ($existingId) {
+                $movieUpdate->execute([$poster, $folder, $imdbId, $rating, $genres, $plot, $existingId]);
+            } else {
+                $movieInsert->execute([$title, $year, $poster, $folder, $imdbId, $rating, $genres, $plot]);
+            }
             $count++;
         }
 
+        // Sweep stale rows (movies no longer in the library)
+        $db->exec("DELETE FROM movies WHERE scraped_at = '__stale__'");
+
         return ['ok' => true, 'count' => $count, 'message' => "{$count} movies scraped"];
+    }
+
+    /**
+     * Extract audio and subtitle languages from Kodi streamdetails.
+     * Returns [audio_langs_csv, subtitle_langs_csv] as comma-separated ISO codes.
+     */
+    private function extractStreamLangs(?array $streamdetails): array {
+        if (!$streamdetails) return ['', ''];
+
+        $audioLangs = [];
+        $subLangs = [];
+
+        foreach ($streamdetails['audio'] ?? [] as $audio) {
+            $lang = trim($audio['language'] ?? '');
+            if ($lang && $lang !== 'und' && !in_array($lang, $audioLangs)) {
+                $audioLangs[] = $lang;
+            }
+        }
+
+        foreach ($streamdetails['subtitle'] ?? [] as $sub) {
+            $lang = trim($sub['language'] ?? '');
+            if ($lang && $lang !== 'und' && !in_array($lang, $subLangs)) {
+                $subLangs[] = $lang;
+            }
+        }
+
+        return [implode(',', $audioLangs), implode(',', $subLangs)];
     }
 
     /**
@@ -351,17 +394,32 @@ class KodiScraper {
         }
 
         $db = DB::get();
-        $db->exec('DELETE FROM tv_episodes');
-        $db->exec('DELETE FROM tv_shows');
 
-        $showStmt = $db->prepare(
-            'INSERT INTO tv_shows (title, year, poster_url, seasons, episode_count, plot, scraped_at)
-             VALUES (?, ?, ?, ?, ?, ?, datetime(\'now\'))'
+        // Mark every existing row stale so we can identify deletions after the scrape.
+        // Then upsert each show/episode in place — preserving IDs so scan_state stays valid.
+        $db->exec("UPDATE tv_shows SET scraped_at = '__stale__'");
+        $db->exec("UPDATE tv_episodes SET scraped_at = '__stale__'");
+
+        // Upsert show by (title, year). On match, refresh the existing row's metadata
+        // and keep its id. On miss, insert a new row.
+        $showSelect = $db->prepare('SELECT id FROM tv_shows WHERE title = ? AND year = ? LIMIT 1');
+        $showInsert = $db->prepare(
+            "INSERT INTO tv_shows (title, year, poster_url, seasons, episode_count, plot, scraped_at)
+             VALUES (?, ?, ?, ?, ?, ?, datetime('now'))"
+        );
+        $showUpdate = $db->prepare(
+            "UPDATE tv_shows SET poster_url=?, seasons=?, episode_count=?, plot=?, scraped_at=datetime('now') WHERE id=?"
         );
 
-        $epStmt = $db->prepare(
-            'INSERT INTO tv_episodes (show_id, season, episode, title, file_path, folder_path, scraped_at)
-             VALUES (?, ?, ?, ?, ?, ?, datetime(\'now\'))'
+        // Upsert episode by (show_id, season, episode). Path may have changed, refresh it
+        // along with stream details — but the id stays stable.
+        $epSelect = $db->prepare('SELECT id FROM tv_episodes WHERE show_id=? AND season=? AND episode=? LIMIT 1');
+        $epInsert = $db->prepare(
+            "INSERT INTO tv_episodes (show_id, season, episode, title, file_path, folder_path, scraped_at)
+             VALUES (?, ?, ?, ?, ?, ?, datetime('now'))"
+        );
+        $epUpdate = $db->prepare(
+            "UPDATE tv_episodes SET title=?, file_path=?, folder_path=?, scraped_at=datetime('now') WHERE id=?"
         );
 
         $showCount = 0;
@@ -375,14 +433,24 @@ class KodiScraper {
             $poster = $this->imageUrl($show['art']['poster'] ?? '');
             $seasons = (int) ($show['season'] ?? 0);
             $episodeCount = (int) ($show['episode'] ?? 0);
+            $plot = $show['plot'] ?? '';
 
-            $showStmt->execute([$title, $year, $poster, $seasons, $episodeCount, $show['plot'] ?? '']);
-            $localShowId = (int) $db->lastInsertId();
+            // Look up existing show
+            $showSelect->execute([$title, $year]);
+            $existingShowId = $showSelect->fetchColumn();
+
+            if ($existingShowId) {
+                $showUpdate->execute([$poster, $seasons, $episodeCount, $plot, $existingShowId]);
+                $localShowId = (int) $existingShowId;
+            } else {
+                $showInsert->execute([$title, $year, $poster, $seasons, $episodeCount, $plot]);
+                $localShowId = (int) $db->lastInsertId();
+            }
             $showCount++;
 
             $epResult = $this->rpc('VideoLibrary.GetEpisodes', [
                 'tvshowid' => $kodiShowId,
-                'properties' => ['title', 'season', 'episode', 'file'],
+                'properties' => ['title', 'season', 'episode', 'file', 'streamdetails'],
                 'sort' => ['order' => 'ascending', 'method' => 'episode'],
             ]);
 
@@ -395,11 +463,22 @@ class KodiScraper {
                     $filePath = $this->tvPathToFile($kodiFile);
                     $folderPath = $filePath ? dirname($filePath) : null;
 
-                    $epStmt->execute([$localShowId, $epSeason, $epNum, $epTitle, $filePath, $folderPath]);
+                    $epSelect->execute([$localShowId, $epSeason, $epNum]);
+                    $existingEpId = $epSelect->fetchColumn();
+
+                    if ($existingEpId) {
+                        $epUpdate->execute([$epTitle, $filePath, $folderPath, $existingEpId]);
+                    } else {
+                        $epInsert->execute([$localShowId, $epSeason, $epNum, $epTitle, $filePath, $folderPath]);
+                    }
                     $epCount++;
                 }
             }
         }
+
+        // Sweep stale rows — episodes/shows that no longer exist in the source library.
+        $db->exec("DELETE FROM tv_episodes WHERE scraped_at = '__stale__'");
+        $db->exec("DELETE FROM tv_shows WHERE scraped_at = '__stale__'");
 
         return [
             'ok' => true,

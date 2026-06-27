@@ -107,12 +107,16 @@ class SyncHelper {
             }
 
             $embedded = self::getEmbeddedTracks($vid);
+            $videoInfo = self::getVideoInfo($vid);
 
             $pairs[] = [
                 'video' => $vid,
                 'video_filename' => basename($vid),
                 'size_mb' => round(filesize($vid) / (1024 * 1024), 1),
                 'size_human' => self::humanSize(filesize($vid)),
+                'video_width' => $videoInfo['width'],
+                'video_height' => $videoInfo['height'],
+                'resolution_label' => $videoInfo['label'],
                 'subtitles' => $matchedSubs,
                 'embedded_tracks' => $embedded,
             ];
@@ -124,6 +128,31 @@ class SyncHelper {
             'total_videos' => count($videos),
             'total_external_subs' => count($allSubs),
         ];
+    }
+
+    /**
+     * Detect video stream width/height and classify resolution tier.
+     */
+    public static function getVideoInfo(string $videoPath): array {
+        $cmd = sprintf(
+            'ffprobe -v quiet -print_format json -show_streams -select_streams v:0 %s 2>/dev/null',
+            escapeshellarg($videoPath)
+        );
+        $output = shell_exec($cmd);
+        $info = ['width' => 0, 'height' => 0, 'label' => ''];
+        if (!$output) return $info;
+        $data = json_decode($output, true);
+        if (!$data || empty($data['streams'][0])) return $info;
+        $w = (int) ($data['streams'][0]['width'] ?? 0);
+        $h = (int) ($data['streams'][0]['height'] ?? 0);
+        $info['width'] = $w;
+        $info['height'] = $h;
+        // Classify by width: <1024 SD, 1024-1599 720p, 1600-2559 1080p, 2560+ 4K
+        if ($w >= 2560)      $info['label'] = '4K';
+        else if ($w >= 1600) $info['label'] = '1080p';
+        else if ($w >= 1024) $info['label'] = '720p';
+        else if ($w > 0)     $info['label'] = 'SD';
+        return $info;
     }
 
     /**

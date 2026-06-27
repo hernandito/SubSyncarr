@@ -176,10 +176,7 @@
     <!-- Path Detection Wizard -->
     <div class="settings-group" id="pathSection">
       <div class="settings-group-title">Library Paths</div>
-      <div id="pathStatusBox" style="border:1px solid #ffb2b2;padding:12px;border-radius:12px;background-color:#ffe9e9;color:#9f0000;font-size:0.88rem;margin-bottom:1rem;line-height:1.6">
-        <strong>⚠ Action Required:</strong> SubSyncarr needs to know where your media server stores files.
-        Click the button below to auto-detect your library paths.
-      </div>
+      <div id="pathStatusBox" style="display:none;padding:12px;border-radius:12px;font-size:0.88rem;margin-bottom:1rem;line-height:1.6"></div>
 
       <button class="btn btn-sync btn-lg" onclick="detectPaths()">Detect Library Paths</button>
       <span id="detectStatus" style="margin-left:0.75rem;font-size:0.85rem"></span>
@@ -400,7 +397,16 @@
           </label>
           <span style="font-size:0.75rem;color:var(--text-faint)">— movie-focused, no account needed</span>
         </div>
-        <button class="btn btn-scan" style="margin-top:0.5rem" onclick="testProvider('yify')">Test YIFY</button>
+        <div style="margin-top:0.6rem;padding:0.65rem 0.85rem;background:var(--bg);border:1px solid var(--border);border-radius:5px;font-size:0.78rem;color:var(--text-dim);line-height:1.55">
+          <strong style="color:var(--text)">A note on YIFY:</strong> the YIFY release group is known for very small file-size video encodes,
+          which some users avoid for quality reasons. <strong>But the origin of a subtitle has nothing to do with the encoder it came from</strong> —
+          a .srt is just timed text. SubSyncarr syncs subtitles against your video's audio waveform, so a YIFY-sourced sub works just as well on a Blu-ray remux.
+          A useful extra source, especially for harder-to-find titles.
+          <br><br>
+          <strong style="color:var(--text)">Caveat:</strong> unlike OpenSubtitles or SubDL (which provide clean APIs), YIFY is web-scraped from HTML pages that occasionally change layout.
+          You may sometimes see oddly-formatted result rows or extra noise — the <em>Preview</em> button on each result is your friend when in doubt.
+        </div>
+        <button class="btn btn-scan" style="margin-top:0.6rem" onclick="testProvider('yify')">Test YIFY</button>
         <span id="testResultYIFY" style="margin-left:0.75rem;font-size:0.85rem"></span>
       </div>
 
@@ -705,6 +711,7 @@ function toggleTheme() {
 function setPathBoxGreen(sourceName) {
   sourceName = sourceName || 'your media server';
   const box = document.getElementById('pathStatusBox');
+  box.style.display = 'block';
   box.style.border = '1px solid #a3e4a3';
   box.style.backgroundColor = '#e9ffe9';
   box.style.color = '#006600';
@@ -714,6 +721,7 @@ function setPathBoxGreen(sourceName) {
 function setPathBoxRed(sourceName) {
   sourceName = sourceName || 'your media server';
   const box = document.getElementById('pathStatusBox');
+  box.style.display = 'block';
   box.style.border = '1px solid #ffb2b2';
   box.style.backgroundColor = '#ffe9e9';
   box.style.color = '#9f0000';
