@@ -44,7 +44,6 @@ $needsSetup = !$pathsDone || !$lastScrape;
     <a href="#" class="active" data-page="search">Search</a>
     <a href="#" data-page="queue">Queue<span id="queueBadge"></span></a>
     <a href="settings.php">Settings</a>
-    <a href="advanced.php">Advanced</a>
   </div>
 
   <!-- Stats bar -->
@@ -136,6 +135,7 @@ $needsSetup = !$pathsDone || !$lastScrape;
         <span>Subtitles Found Online</span>
         <span id="subSearchSummary" style="font-weight:400;font-size:0.8rem;color:var(--text-dim)"></span>
       </div>
+      <div id="subSearchContext" class="sub-search-context" style="display:none"></div>
       <div id="subSearchResults"></div>
     </div>
   </div>
@@ -199,10 +199,16 @@ async function loadStats() {
     if (ls === 'Never') {
       document.getElementById('statLastScrape').textContent = ls;
     } else {
+      // Locale-aware short date + time. Browser picks 6/23/26 10:45 AM (US)
+      // or 23/06/26 10:45 (EU) or 2026-06-23 10:45 (ISO regions) automatically.
       const d = new Date(ls.replace(' ', 'T'));
-      document.getElementById('statLastScrape').textContent = d.toLocaleDateString('en-US', {
-        month: 'short', day: 'numeric', year: 'numeric'
-      });
+      const dateStr = new Intl.DateTimeFormat(undefined, {
+        year: '2-digit', month: 'numeric', day: 'numeric'
+      }).format(d);
+      const timeStr = new Intl.DateTimeFormat(undefined, {
+        hour: 'numeric', minute: '2-digit'
+      }).format(d);
+      document.getElementById('statLastScrape').textContent = `${dateStr} ${timeStr}`;
     }
   } catch(e) {}
 }
@@ -356,20 +362,40 @@ async function selectItem(item) {
           if (sNum === '0') continue; // Skip specials/extras
           const firstEp = eps[0];
           const seasonFolder = firstEp.folder_path || '';
+          const seasonId = `season_${item.id}_${sNum}`;
           html += `<div class="season-group">
-            <div class="season-header" onclick="toggleSeason(this)">
+            <div class="season-header" data-season-id="${seasonId}" onclick="toggleSeason(this)">
               <span class="arrow">▶</span>
-              Season ${sNum} (${eps.length} episodes)
-              ${seasonFolder ? `<button class="btn btn-batch" style="margin-left:auto" onclick="event.stopPropagation();syncSeason('${escJs(seasonFolder)}','${esc(item.title)} S${sNum}')">Sync All Season</button>` : ''}
+              <span class="season-title">Season ${sNum} <span class="season-count">(${eps.length} episodes)</span></span>
+              <div class="season-actions">
+                ${seasonFolder ? `<button class="btn btn-find-season" onclick="event.stopPropagation();findSubtitlesForSeason('${escJs(item.title)}',${sNum},this)" title="Find subtitles online for every episode in this season">Search All Season</button>` : ''}
+                <select class="season-lang" onclick="event.stopPropagation()" title="Subtitle language for Search All Season">
+                  <option value="en">English</option>
+                  <option value="es">Spanish</option>
+                  <option value="fr">French</option>
+                  <option value="de">German</option>
+                  <option value="it">Italian</option>
+                  <option value="pt">Portuguese</option>
+                  <option value="ru">Russian</option>
+                  <option value="zh">Chinese</option>
+                  <option value="ja">Japanese</option>
+                  <option value="ko">Korean</option>
+                  <option value="ar">Arabic</option>
+                  <option value="nl">Dutch</option>
+                  <option value="pl">Polish</option>
+                  <option value="sv">Swedish</option>
+                  <option value="tr">Turkish</option>
+                </select>
+                ${seasonFolder ? `<button class="btn btn-sync-season" onclick="event.stopPropagation();syncSeason('${escJs(seasonFolder)}','${esc(item.title)} S${sNum}')" title="Re-sync every existing .srt in this season">Sync All</button>` : ''}
+                ${seasonFolder ? `<button class="btn btn-scan-season" onclick="event.stopPropagation();scanSeasonFromHeader(this,'${escJs(seasonFolder)}','${seasonId}')" title="Scan every episode for embedded + external subtitles">Scan</button>` : ''}
+              </div>
             </div>
-            <div class="season-episodes">`;
+            <div class="season-episodes" data-season-id="${seasonId}">`;
           eps.forEach(ep => {
-            const epFolder = ep.folder_path || '';
-            html += `<div class="episode-row">
+            html += `<div class="episode-row" data-episode="${ep.episode}" data-season="${sNum}">
               <span class="ep-num">E${String(ep.episode).padStart(2,'0')}</span>
-              <span class="ep-title">${esc(ep.title || 'Episode ' + ep.episode)}</span>
-              <div class="ep-actions">
-                ${epFolder ? `<button class="btn btn-scan" onclick="scanFolder('${escJs(epFolder)}')">Scan</button>` : '<span style="font-size:0.75rem;color:var(--text-faint)">No path</span>'}
+              <div class="ep-body">
+                <div class="ep-title">${esc(ep.title || 'Episode ' + ep.episode)}</div>
               </div>
             </div>`;
           });
@@ -391,6 +417,216 @@ function toggleSeason(el) {
   el.classList.toggle('open');
   const eps = el.nextElementSibling;
   eps.classList.toggle('open');
+}
+
+// Scan a season's folder and render results INLINE into each episode row.
+// If the accordion is closed, open it first. Replaces the old top-level scanFolder() flow for TV.
+async function scanSeasonFromHeader(btn, folderPath, seasonId) {
+  const header = btn.closest('.season-header');
+  const episodes = header.nextElementSibling;
+  if (!header.classList.contains('open')) {
+    header.classList.add('open');
+    episodes.classList.add('open');
+  }
+
+  // Show a status pill on the header
+  btn.disabled = true;
+  const origText = btn.textContent;
+  btn.textContent = 'Scanning…';
+
+  try {
+    const r = await fetch('api.php?action=scan', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ folder: folderPath, recursive: false })
+    });
+    const data = await r.json();
+    if (data.error) {
+      toast('Scan failed: ' + data.error, 'error');
+      return;
+    }
+
+    // Build a map of filename → scan result so we can match episode rows by file name
+    const pairsByFilename = {};
+    (data.pairs || []).forEach(p => { pairsByFilename[p.video_filename] = p; });
+
+    // Render scan data into each episode row in this season
+    episodes.querySelectorAll('.episode-row').forEach(row => {
+      // Find which pair matches this episode by checking pair.video against the episode's
+      // expected filename pattern. We pick the pair whose filename contains s##e## of this row.
+      const season = String(row.dataset.season).padStart(2, '0');
+      const epNum = String(row.dataset.episode).padStart(2, '0');
+      const pattern = new RegExp(`s${season}e${epNum}`, 'i');
+      let match = null;
+      for (const fname in pairsByFilename) {
+        if (pattern.test(fname)) { match = pairsByFilename[fname]; break; }
+      }
+      if (match) {
+        renderScannedEpisodeRow(row, match);
+      } else {
+        row.classList.add('episode-row-noscan');
+      }
+    });
+  } catch(e) {
+    toast('Scan error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origText;
+  }
+}
+
+// Render embedded subs + external subs + Find Subs button into an episode row (compact layout)
+function renderScannedEpisodeRow(row, pair) {
+  const FLAGS = { en:'🇬🇧',es:'🇪🇸',fr:'🇫🇷',de:'🇩🇪',it:'🇮🇹',pt:'🇧🇷',ru:'🇷🇺',zh:'🇨🇳',ja:'🇯🇵',ko:'🇰🇷',ar:'🇸🇦',nl:'🇳🇱',pl:'🇵🇱',sv:'🇸🇪',tr:'🇹🇷',da:'🇩🇰',fi:'🇫🇮',no:'🇳🇴',cs:'🇨🇿',hu:'🇭🇺',ro:'🇷🇴',he:'🇮🇱' };
+  const flag = c => FLAGS[(c || '').toLowerCase().slice(0,2)] || '🌐';
+  const LANG3to2 = { eng:'en',spa:'es',fre:'fr',fra:'fr',ger:'de',deu:'de',ita:'it',por:'pt',rus:'ru',chi:'zh',zho:'zh',jpn:'ja',kor:'ko',ara:'ar',dut:'nl',nld:'nl',pol:'pl',swe:'sv',tur:'tr',dan:'da',fin:'fi',nor:'no',nob:'no',cze:'cs',ces:'cs',hun:'hu',rum:'ro',ron:'ro',heb:'he' };
+  const norm = c => LANG3to2[(c||'').toLowerCase()] || (c||'').toLowerCase().slice(0,2);
+
+  // Friendly language full names for embedded subs (used as suffix in old design)
+  const LANGNAMES = { en:'English',es:'Spanish',fr:'French',de:'German',it:'Italian',pt:'Portuguese',ru:'Russian',zh:'Chinese',ja:'Japanese',ko:'Korean',ar:'Arabic',nl:'Dutch',pl:'Polish',sv:'Swedish',tr:'Turkish',da:'Danish',fi:'Finnish',no:'Norwegian',cs:'Czech',hu:'Hungarian',ro:'Romanian',he:'Hebrew' };
+
+  // Build embedded sub list with optional +more collapse
+  const tracks = pair.embedded_tracks || [];
+  const MAX_VISIBLE = 6;
+  const visibleTracks = tracks.slice(0, MAX_VISIBLE);
+  const hiddenTracks = tracks.slice(MAX_VISIBLE);
+
+  // Reproduces the "ENG · SRT (text-based) — English" varied-font row from earlier design
+  const renderTrack = t => {
+    const codec = friendlyCodec(t.codec);
+    const tag = t.forced ? '(forced)' : (codec.note === 'image-based' ? '(image-based)' : '(text-based)');
+    const lang2 = norm(t.language);
+    const langName = LANGNAMES[lang2] || (t.title || '');
+    const titlePart = t.title && t.title !== langName
+      ? ` — <span class="ep-sub-title">${esc(t.title)}</span>`
+      : (langName ? ` — <span class="ep-sub-langname">${esc(langName)}</span>` : '');
+    return `<div class="ep-sub-item">
+      <span class="ep-sub-flag">${flag(lang2)}</span><span class="ep-sub-lang">${esc(t.language || '—')}</span> · <span class="ep-sub-codec">${esc(codec.name)}</span> <span class="ep-sub-tag">${tag}</span>${titlePart}
+    </div>`;
+  };
+
+  let embeddedHtml = '';
+  if (tracks.length === 0) {
+    embeddedHtml = '<div class="ep-sub-empty">No embedded subtitles</div>';
+  } else {
+    embeddedHtml = visibleTracks.map(renderTrack).join('');
+    if (hiddenTracks.length > 0) {
+      const hiddenId = 'hidden_' + Math.random().toString(36).substr(2,8);
+      embeddedHtml += `<button class="ep-sub-more" onclick="this.nextElementSibling.style.display='block';this.style.display='none'">+${hiddenTracks.length} more</button>`;
+      embeddedHtml += `<div id="${hiddenId}" class="ep-sub-hidden" style="display:none">${hiddenTracks.map(renderTrack).join('')}</div>`;
+    }
+  }
+
+  // External subs
+  const subs = pair.subtitles || [];
+  let externalHtml = '';
+  if (subs.length === 0) {
+    externalHtml = `<div class="ep-no-subs">No external subtitle files — embedded tracks above are already in sync with the video</div>`;
+  } else {
+    externalHtml = subs.map(sub => {
+      const m = sub.filename.match(/\.([a-z]{2,3})\.(srt|ass|ssa|vtt|sub)$/i);
+      const subLang = m ? norm(m[1]) : '';
+      const backupBadge = sub.has_backup ? ' <span class="ep-sub-badge">backup ✓</span>' : '';
+      return `<div class="ep-sub-item ep-sub-external">
+        ${subLang ? `<span class="ep-sub-flag">${flag(subLang)}</span>` : ''}<span class="ep-sub-name" title="${esc(sub.path)}">${esc(sub.filename)}</span>
+        <span class="ep-sub-size">${esc(sub.size_human || (sub.size_kb + ' KB'))}</span>
+        ${backupBadge}
+        <button class="btn btn-sync btn-row" onclick="syncOne('${escJs(pair.video)}','${escJs(sub.path)}','${escJs(pair.video_filename)}')">Sync</button>
+        ${sub.has_backup ? `<button class="btn btn-restore btn-row" onclick="restoreOne('${escJs(sub.path)}')">Restore</button>` : ''}
+      </div>`;
+    }).join('');
+  }
+
+  // Resolution pill
+  let resPill = '';
+  if (pair.resolution_label) {
+    resPill = `<span class="res-pill res-${pair.resolution_label.toLowerCase()}">${esc(pair.resolution_label)}</span>`;
+  }
+
+  // Preserve existing episode title (read before innerHTML wipe)
+  const existingTitleEl = row.querySelector('.ep-title');
+  const epTitle = existingTitleEl ? existingTitleEl.textContent : '';
+
+  // Card layout per spec: E## + headline content + Find Subtitles button on ONE row,
+  // then two columns below. Embedded box has its own background+border. External has none.
+  row.innerHTML = `
+    <span class="ep-num">E${String(row.dataset.episode).padStart(2,'0')}</span>
+    <div class="ep-body">
+      <div class="ep-headline">
+        <span class="ep-title">${esc(epTitle)}</span>
+        <span class="ep-sep">·</span>
+        <span class="ep-file">${esc(pair.video_filename)}</span>
+        <span class="ep-sep">·</span>
+        <span class="ep-file-size">${esc(pair.size_human || (pair.size_mb + ' MB'))}</span>
+        ${resPill}
+      </div>
+      <div class="ep-cols">
+        <div class="ep-col ep-col-embedded">
+          <div class="ep-col-head">Embedded Subtitle Tracks</div>
+          ${embeddedHtml}
+        </div>
+        <div class="ep-col ep-col-external">
+          <div class="ep-col-head">External Subtitles</div>
+          ${externalHtml}
+          <div class="ep-col-footer">
+            <select class="ep-lang" title="Subtitle language">
+              <option value="en">English</option>
+              <option value="es">Spanish</option>
+              <option value="fr">French</option>
+              <option value="de">German</option>
+              <option value="it">Italian</option>
+              <option value="pt">Portuguese</option>
+              <option value="ru">Russian</option>
+              <option value="zh">Chinese</option>
+              <option value="ja">Japanese</option>
+              <option value="ko">Korean</option>
+              <option value="ar">Arabic</option>
+              <option value="nl">Dutch</option>
+              <option value="pl">Polish</option>
+              <option value="sv">Swedish</option>
+              <option value="tr">Turkish</option>
+            </select>
+            <button class="btn btn-find-ep" onclick="findSubtitlesForVideoInline('${escJs(pair.video)}','${escJs(pair.video_filename)}',${row.dataset.season},${row.dataset.episode},this)">Search for Subtitles</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  row.classList.add('episode-row-scanned');
+  // Default the per-episode language picker to the season header's current value
+  const seasonLang = row.closest('.season-episodes').previousElementSibling.querySelector('.season-lang');
+  const epLang = row.querySelector('.ep-lang');
+  if (seasonLang && epLang) epLang.value = seasonLang.value;
+}
+
+// Per-episode find — uses the episode row's own language picker
+async function findSubtitlesForVideoInline(videoPath, filename, season, episode, btn) {
+  if (!currentItem) return;
+  const langSel = btn.parentElement.querySelector('.ep-lang');
+  const lang = langSel ? langSel.value : 'en';
+  await executeSubtitleSearch({
+    title: currentItem.title,
+    year: currentItem.year,
+    type: 'tv',
+    season: Number(season),
+    episode: Number(episode),
+    language: lang,
+    video_path: videoPath,
+  }, currentItem.title + ` S${String(season).padStart(2,'0')}E${String(episode).padStart(2,'0')}`);
+}
+
+// Search-all-season uses the LANGUAGE PICKER inside the season header
+async function findSubtitlesForSeason(showTitle, seasonNum, btn) {
+  if (!currentItem) return;
+  const langSel = btn.parentElement.querySelector('.season-lang');
+  const lang = langSel ? langSel.value : 'en';
+  await executeSubtitleSearch({
+    title: showTitle,
+    year: currentItem.year,
+    type: 'tv',
+    season: Number(seasonNum),
+    language: lang,
+  }, `${showTitle} — Season ${seasonNum}`);
 }
 
 // ── Folder Scan ────────────────────────────────────────────────────────
@@ -427,26 +663,33 @@ async function scanFolder(folderPath, recursive) {
     }
 
     let html = '';
+    // Flag/normalizer helpers (mirror what TV uses)
+    const FLAGS_M = { en:'🇬🇧',es:'🇪🇸',fr:'🇫🇷',de:'🇩🇪',it:'🇮🇹',pt:'🇧🇷',ru:'🇷🇺',zh:'🇨🇳',ja:'🇯🇵',ko:'🇰🇷',ar:'🇸🇦',nl:'🇳🇱',pl:'🇵🇱',sv:'🇸🇪',tr:'🇹🇷',da:'🇩🇰',fi:'🇫🇮',no:'🇳🇴',cs:'🇨🇿',hu:'🇭🇺',ro:'🇷🇴',he:'🇮🇱' };
+    const LANG3to2_M = { eng:'en',spa:'es',fre:'fr',fra:'fr',ger:'de',deu:'de',ita:'it',por:'pt',rus:'ru',chi:'zh',zho:'zh',jpn:'ja',kor:'ko',ara:'ar',dut:'nl',nld:'nl',pol:'pl',swe:'sv',tur:'tr',dan:'da',fin:'fi',nor:'no',nob:'no',cze:'cs',ces:'cs',hun:'hu',rum:'ro',ron:'ro',heb:'he' };
+    const flagM = c => FLAGS_M[(LANG3to2_M[(c||'').toLowerCase()] || (c||'').toLowerCase().slice(0,2))] || '🌐';
+
     data.pairs.forEach(pair => {
       html += `<div class="file-pair">`;
 
-      // Header row: filename + per-episode Find button (TV only)
       const findBtnHtml = (currentItem && currentItem.type === 'tv')
         ? `<button class="btn btn-scan pair-find-btn" onclick="findSubtitlesForVideo('${escJs(pair.video)}','${escJs(pair.video_filename)}')">Find Subtitles for This Episode</button>`
         : '';
+      const resPillM = pair.resolution_label
+        ? `<span class="res-pill res-${pair.resolution_label.toLowerCase()}">${esc(pair.resolution_label)}</span>`
+        : '';
       html += `<div class="pair-header">
-        <div class="pair-video" data-video-path="${esc(pair.video)}">${esc(pair.video_filename)} <span class="size">(${esc(pair.size_human || (pair.size_mb + ' MB'))})</span></div>
+        <div class="pair-video" data-video-path="${esc(pair.video)}">${esc(pair.video_filename)} <span class="size">(${esc(pair.size_human || (pair.size_mb + ' MB'))})</span> ${resPillM}</div>
         ${findBtnHtml}
       </div>`;
 
-      // Embedded tracks with human-friendly codec names
+      // Embedded tracks with flag + human-friendly codec names
       if (pair.embedded_tracks && pair.embedded_tracks.length > 0) {
         html += '<div class="embedded-tracks"><div class="embedded-label">Embedded Subtitle Tracks (info only — not modified)</div>';
         pair.embedded_tracks.forEach(t => {
           const codec = friendlyCodec(t.codec);
           const forced = t.forced ? ' · Forced' : '';
           const title = t.title ? ` — ${esc(t.title)}` : '';
-          html += `<div class="embedded-track">${t.language} · ${codec.name} <span style="color:var(--text-faint);font-size:0.72rem">(${codec.note})</span>${forced}${title}</div>`;
+          html += `<div class="embedded-track"><span class="ep-sub-flag">${flagM(t.language)}</span>${t.language} · ${codec.name} <span style="color:var(--text-faint);font-size:0.72rem">(${codec.note})</span>${forced}${title}</div>`;
         });
         html += '</div>';
       }
@@ -456,9 +699,12 @@ async function scanFolder(folderPath, recursive) {
         html += '<div class="no-subs">No external subtitle files — embedded tracks above are already in sync with the video</div>';
       } else {
         pair.subtitles.forEach(sub => {
+          const m = sub.filename.match(/\.([a-z]{2,3})\.(srt|ass|ssa|vtt|sub)$/i);
+          const subLang = m ? (LANG3to2_M[m[1].toLowerCase()] || m[1].toLowerCase().slice(0,2)) : '';
+          const flagHtml = subLang ? `<span class="ep-sub-flag">${FLAGS_M[subLang] || '🌐'}</span>` : '';
           const backupBadge = sub.has_backup ? ' <span style="color:var(--success);font-size:0.7rem">✓ backup exists</span>' : '';
           html += `<div class="sub-row">
-            <span class="sub-name">${esc(sub.filename)}${backupBadge}</span>
+            ${flagHtml}<span class="sub-name">${esc(sub.filename)}${backupBadge}</span>
             <span class="sub-size">${esc(sub.size_human || (sub.size_kb + ' KB'))}</span>
             <button class="btn btn-sync" onclick="syncOne('${escJs(pair.video)}','${escJs(sub.path)}','${escJs(pair.video_filename)}')">Sync</button>
             ${sub.has_backup ? `<button class="btn btn-restore" onclick="restoreOne('${escJs(sub.path)}')">Restore</button>` : ''}
@@ -573,7 +819,33 @@ async function executeSubtitleSearch(body, contextLabel) {
   const panel = document.getElementById('subSearchPanel');
   const results = document.getElementById('subSearchResults');
   const summary = document.getElementById('subSearchSummary');
+  const context = document.getElementById('subSearchContext');
   const item = currentItem;
+
+  // Build a rich context line so the user always knows what was searched.
+  // Shows: Title (Year) · Season/Episode (TV only) · Language · Target file
+  const langNames = {en:'English',es:'Spanish',fr:'French',de:'German',it:'Italian',pt:'Portuguese',ru:'Russian',zh:'Chinese',ja:'Japanese',ko:'Korean',ar:'Arabic',nl:'Dutch',pl:'Polish',sv:'Swedish',tr:'Turkish',da:'Danish',fi:'Finnish',no:'Norwegian',cs:'Czech',hu:'Hungarian',ro:'Romanian',he:'Hebrew'};
+  const langDisplay = langNames[body.language] || (body.language || 'en').toUpperCase();
+  let titleLine = esc(body.title || item.title);
+  if (body.year || item.year) titleLine += ` <span class="ctx-meta">(${esc(body.year || item.year)})</span>`;
+  if (body.season) {
+    const epPart = body.episode
+      ? `S${String(body.season).padStart(2,'0')}E${String(body.episode).padStart(2,'0')}`
+      : `Season ${body.season} · all episodes`;
+    titleLine += ` <span class="ctx-meta">· ${esc(epPart)}</span>`;
+  }
+  let fileLine = '';
+  if (body.video_path) {
+    const parts = body.video_path.split('/');
+    fileLine = `<div class="ctx-file">${esc(parts[parts.length - 1])}</div>`;
+  }
+  context.innerHTML = `
+    <div class="ctx-title">Results for: ${titleLine}
+      <span class="ctx-lang">🔎 ${esc(langDisplay)} Subtitles</span>
+    </div>
+    ${fileLine}
+  `;
+  context.style.display = 'block';
 
   panel.style.display = 'block';
   results.innerHTML = `<div class="spinner"></div> Searching subtitle providers for ${esc(contextLabel)}...`;
@@ -602,36 +874,172 @@ async function executeSubtitleSearch(body, contextLabel) {
       return;
     }
 
-    summary.textContent = `${data.results.length} result(s) from ${new Set(data.results.map(r => r.provider_name)).size} provider(s)`;
+    // Filter out low-quality releases (TELESYNC, cam, HDCAM, etc.) — these are pirated
+    // pre-release captures and never match real Blu-ray/WEB-DL files. The user's library
+    // is high-quality content, so these subtitles will never sync correctly.
+    const BAD_RELEASE_PATTERNS = [
+      /\bTELESYNC\b/i, /\bTELECINE\b/i, /\bHDCAM\b/i, /\bHDTC\b/i,
+      /\bWORKPRINT\b/i, /\bTS-?Screener\b/i, /\bHC\.HDRip\b/i,
+      /(^|[.\-_\s])CAM([.\-_\s]|$)/i,
+    ];
+    const isBadQuality = s => {
+      const text = (s.filename || '') + ' ' + (s.release || '');
+      return BAD_RELEASE_PATTERNS.some(rx => rx.test(text));
+    };
+    const filteredResults = data.results.filter(s => !isBadQuality(s));
+    if (filteredResults.length === 0 && data.results.length > 0) {
+      results.innerHTML = '<div style="color:var(--text-dim);padding:1rem">All results were filtered (TELESYNC / cam / HDCAM low-quality releases). Try a different language or provider.</div>';
+      return;
+    }
+
+    summary.textContent = `${filteredResults.length} result(s) from ${new Set(filteredResults.map(r => r.provider_name)).size} provider(s)`;
 
     // Use the video path from the search body (per-episode) or fall back to first video
     const videoPath = body.video_path || (firstVideo ? (firstVideo.dataset.videoPath || '') : '');
 
-    results.innerHTML = data.results.map(sub => {
+    results.innerHTML = filteredResults.map(sub => {
       const provClass = sub.match_type === 'hash' ? 'sub-result-provider sub-result-hash' : 'sub-result-provider';
       const hi = sub.hearing_impaired ? '<span class="sub-result-hi">CC/HI</span>' : '';
-      const mt = sub.machine_translated ? '<span style="color:var(--danger);font-size:0.7rem;margin-left:0.3rem">MT</span>' : '';
+      const mt = sub.machine_translated ? '<span class="sub-result-mt">MT</span>' : '';
       const downloads = sub.download_count > 0 ? `${Number(sub.download_count).toLocaleString()} downloads` : '';
-      const matchBadge = sub.match_type === 'hash' ? ' · Hash match ✓' : '';
-      const meta = [sub.release || sub.filename, downloads, sub.uploader ? 'by ' + sub.uploader : ''].filter(Boolean).join(' · ');
+      const uploader = sub.uploader ? 'by ' + sub.uploader : '';
+      const matchBadge = sub.match_type === 'hash' ? '<span class="sub-result-match-hash">HASH MATCH</span>' : '';
+
+      // Build meta WITHOUT duplicating the filename/release that's already on the line above.
+      // If release equals filename, only show downloads + uploader.
+      const releaseDifferent = sub.release && sub.release !== (sub.filename || '');
+      const metaParts = [];
+      if (releaseDifferent) metaParts.push(sub.release);
+      if (downloads) metaParts.push(downloads);
+      if (uploader)  metaParts.push(uploader);
+      const meta = metaParts.join(' · ');
       const langNames = {en:'English',es:'Spanish',fr:'French',de:'German',it:'Italian',pt:'Portuguese',ru:'Russian',zh:'Chinese',ja:'Japanese',ko:'Korean',ar:'Arabic',nl:'Dutch',pl:'Polish',sv:'Swedish',tr:'Turkish',da:'Danish',fi:'Finnish',no:'Norwegian',cs:'Czech',hu:'Hungarian',ro:'Romanian',he:'Hebrew'};
       const langDisplay = langNames[sub.language] || (sub.language || '').toUpperCase();
 
-      return `<div class="sub-result">
-        <div class="sub-result-info">
-          <div class="sub-result-name">${esc(sub.filename || sub.release || 'Unknown')}${hi}${mt}</div>
-          <div class="sub-result-meta">${esc(meta)}${matchBadge}</div>
+      // Build a provider page URL (where viable) so the pill becomes a clickable link.
+      // For SubDL we intentionally do NOT use the file_id — it's a download URL with
+      // an API key in it. We send users to a search page using the title instead.
+      let providerUrl = null;
+      const fid = sub.file_id || '';
+      const titleForSearch = (item.title || '').trim();
+      switch (sub.provider) {
+        case 'opensubtitles':
+          if (fid && /^\d+$/.test(fid)) providerUrl = `https://www.opensubtitles.com/en/subtitles/${fid}`;
+          else providerUrl = 'https://www.opensubtitles.com/';
+          break;
+        case 'subdl':
+          // Avoid leaking the API key embedded in file_id; link to a search instead.
+          providerUrl = titleForSearch
+            ? `https://subdl.com/search/${encodeURIComponent(titleForSearch)}`
+            : 'https://subdl.com/';
+          break;
+        case 'podnapisi':
+          if (fid) providerUrl = `https://www.podnapisi.net/subtitles/${fid}`;
+          else providerUrl = 'https://www.podnapisi.net/';
+          break;
+        case 'yify':
+          if (fid.startsWith('http')) providerUrl = fid;
+          else if (fid.startsWith('/')) providerUrl = `https://yifysubtitles.ch${fid}`;
+          else providerUrl = 'https://yifysubtitles.ch/';
+          break;
+        case 'addic7ed':
+          // file_id is a /original or /updated download path, not a viewable page.
+          // Best we can do is link to the homepage; suppress the link for that single case
+          // to avoid promising something useful.
+          providerUrl = null;
+          break;
+        case 'gestdown':
+          // API-only service — no per-subtitle pages exist.
+          providerUrl = null;
+          break;
+        default:
+          providerUrl = null;
+      }
+
+      const pill = providerUrl
+        ? `<a class="${provClass} sub-result-provider-link" href="${esc(providerUrl)}" target="_blank" rel="noopener" title="Open subtitle link">${esc(sub.provider_name)}</a>`
+        : `<span class="${provClass}" title="No direct link available from this provider">${esc(sub.provider_name)}</span>`;
+
+      return `<div class="sub-result-wrap">
+        <div class="sub-result">
+          <div class="sub-result-info">
+            <div class="sub-result-name">${esc(sub.filename || sub.release || 'Unknown')}${hi}${mt}</div>
+            <div class="sub-result-meta">${esc(meta)}${matchBadge}</div>
+          </div>
+          <span class="sub-result-lang">${esc(langDisplay)}</span>
+          ${pill}
+          <button class="btn btn-preview" onclick="previewSub('${escJs(sub.provider)}','${escJs(sub.file_id)}',this)" title="Peek at the subtitle text before downloading">Preview</button>
+          <button class="btn btn-download-sync" onclick="downloadSub('${escJs(sub.provider)}','${escJs(sub.file_id)}','${escJs(videoPath)}','${escJs(item.title)}','${escJs(sub.language || 'en')}',true)">Download & Sync</button>
+          <button class="btn btn-download-only" onclick="downloadSub('${escJs(sub.provider)}','${escJs(sub.file_id)}','${escJs(videoPath)}','${escJs(item.title)}','${escJs(sub.language || 'en')}',false)">Download</button>
+          <div class="sub-preview" style="display:none"></div>
         </div>
-        <span class="sub-result-lang">${esc(langDisplay)}</span>
-        <span class="${provClass}">${esc(sub.provider_name)}</span>
-        <button class="btn btn-download-sync" onclick="downloadSub('${escJs(sub.provider)}','${escJs(sub.file_id)}','${escJs(videoPath)}','${escJs(item.title)}','${escJs(sub.language || 'en')}',true)">Download & Sync</button>
-        <button class="btn btn-download-only" onclick="downloadSub('${escJs(sub.provider)}','${escJs(sub.file_id)}','${escJs(videoPath)}','${escJs(item.title)}','${escJs(sub.language || 'en')}',false)">Download</button>
       </div>`;
     }).join('');
 
   } catch(e) {
     results.innerHTML = `<div style="color:var(--danger)">Search error: ${esc(e.message)}</div>`;
   }
+}
+
+async function previewSub(provider, fileId, btn) {
+  // Locate the preview container for this row (now lives inside .sub-result)
+  const card = btn.closest('.sub-result');
+  const previewBox = card.querySelector('.sub-preview');
+
+  // Toggle behavior: clicking Preview again closes it
+  if (previewBox.style.display !== 'none' && previewBox.dataset.loaded === '1') {
+    previewBox.style.display = 'none';
+    previewBox.innerHTML = '';
+    previewBox.dataset.loaded = '0';
+    btn.textContent = 'Preview';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Loading…';
+  previewBox.style.display = 'block';
+  previewBox.innerHTML = '<div class="sub-preview-loading"><span class="spinner"></span> Downloading preview…</div>';
+
+  try {
+    const r = await fetch('api.php?action=subtitle_preview', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ provider: provider, file_id: fileId })
+    });
+    const data = await r.json();
+    if (!data.ok) {
+      previewBox.innerHTML = `<div class="sub-preview-error">Preview failed: ${esc(data.error || 'unknown')}</div>
+        <button class="sub-preview-close" onclick="closePreview(this)" title="Close preview">×</button>`;
+      previewBox.dataset.loaded = '1';
+      btn.disabled = false;
+      btn.textContent = 'Preview';
+      return;
+    }
+
+    const lines = (data.lines || []).map(l => esc(l)).join('\n');
+    previewBox.innerHTML = `
+      <div class="sub-preview-head">
+        <span>Preview · first ${data.shown} dialogue lines</span>
+        <button class="sub-preview-close" onclick="closePreview(this)" title="Close preview">×</button>
+      </div>
+      <pre class="sub-preview-pre">${lines}</pre>
+    `;
+    previewBox.dataset.loaded = '1';
+  } catch(e) {
+    previewBox.innerHTML = `<div class="sub-preview-error">Preview error: ${esc(e.message)}</div>
+      <button class="sub-preview-close" onclick="closePreview(this)" title="Close preview">×</button>`;
+    previewBox.dataset.loaded = '1';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Preview';
+  }
+}
+
+function closePreview(btn) {
+  const previewBox = btn.closest('.sub-preview');
+  previewBox.style.display = 'none';
+  previewBox.innerHTML = '';
+  previewBox.dataset.loaded = '0';
 }
 
 async function downloadSub(provider, fileId, videoPath, title, language, autoSync) {
@@ -1041,6 +1449,26 @@ function toggleTheme() {
 
 // Auto-poll queue on load if there are active jobs
 refreshQueue();
+
+// ── Floating scroll-to-top/bottom buttons ──────────────────────────────
+(function(){
+  const wrap = document.createElement('div');
+  wrap.className = 'scroll-fab-wrap';
+  wrap.innerHTML = `
+    <button class="scroll-fab" id="scrollFabTop"    title="Scroll to top">▲</button>
+    <button class="scroll-fab" id="scrollFabBottom" title="Scroll to bottom">▼</button>
+  `;
+  document.body.appendChild(wrap);
+  document.getElementById('scrollFabTop').onclick    = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+  document.getElementById('scrollFabBottom').onclick = () => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+  // Show after 300px scroll
+  const onScroll = () => {
+    if (window.scrollY > 300) wrap.classList.add('visible');
+    else wrap.classList.remove('visible');
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+})();
 </script>
 </body>
 </html>

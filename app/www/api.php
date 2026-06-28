@@ -43,6 +43,26 @@ function getScraper() {
     }
 }
 
+/**
+ * Tolerant JSON extractor. Python providers may emit warnings or debug lines on stderr
+ * which we capture (2>&1). We try a strict decode first; on failure, we look for the
+ * last well-formed JSON object in the output and decode that.
+ */
+function decodeJsonTolerant(?string $raw): ?array {
+    if ($raw === null || $raw === '') return null;
+    $direct = json_decode($raw, true);
+    if (is_array($direct)) return $direct;
+    // Find the last "{" and try parsing from there to the end.
+    $lastBrace = strrpos($raw, '{');
+    while ($lastBrace !== false) {
+        $candidate = substr($raw, $lastBrace);
+        $decoded = json_decode($candidate, true);
+        if (is_array($decoded)) return $decoded;
+        $lastBrace = strrpos(substr($raw, 0, $lastBrace), '{');
+    }
+    return null;
+}
+
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 try {
@@ -225,6 +245,77 @@ try {
             echo json_encode(DB::getStats());
             break;
 
+        // ── Language Rules (Advanced) ──────────────────────────────────
+        case 'save_language_rules':
+            $input = json_decode(file_get_contents('php://input'), true);
+            $rules = $input['rules'] ?? null;
+            if (!$rules || !isset($rules['languages']) || !is_array($rules['languages']) || count($rules['languages']) === 0) {
+                echo json_encode(['error' => 'At least one language is required']);
+                break;
+            }
+            DB::setSetting('language_rules', json_encode($rules));
+            // Re-evaluate any existing scan data against the new rules (fast — no ffprobe)
+            $reevaluated = 0;
+            try {
+                require_once __DIR__ . '/includes/analyzer.php';
+                $reevaluated = HealthScanner::reevaluateAll($rules);
+            } catch (Throwable $t) {
+                // non-fatal; rules still saved
+            }
+            echo json_encode(['status' => 'saved', 'rules' => $rules, 'reevaluated' => $reevaluated]);
+            break;
+
+        case 'get_language_rules':
+            $raw = DB::getSetting('language_rules', '');
+            if (empty($raw)) {
+                echo json_encode(['rules' => null]);
+            } else {
+                $rules = json_decode($raw, true);
+                echo json_encode(['rules' => $rules]);
+            }
+            break;
+
+        // ── Analyzer test: evaluate a few titles and show verdicts ─────
+        case 'analyze_sample':
+            $raw = DB::getSetting('language_rules', '');
+            if (empty($raw)) {
+                echo json_encode(['error' => 'Set up your language preferences first']);
+                break;
+            }
+            $rules = json_decode($raw, true);
+            require_once __DIR__ . '/includes/analyzer.php';
+
+            $type = $_GET['type'] ?? 'movie';
+            $limit = min(50, max(1, (int) ($_GET['limit'] ?? 10)));
+            $db = DB::get();
+
+            $samples = [];
+            if ($type === 'movie') {
+                $rows = $db->query("SELECT id, title, year, folder_path FROM movies WHERE folder_path IS NOT NULL ORDER BY RANDOM() LIMIT $limit");
+                foreach ($rows as $row) {
+                    // Find main video
+                    $vid = null; $best = 0;
+                    if (is_dir($row['folder_path'])) {
+                        foreach (scandir($row['folder_path']) as $f) {
+                            if ($f === '.' || $f === '..') continue;
+                            $ext = strtolower(pathinfo($f, PATHINFO_EXTENSION));
+                            if (!in_array($ext, ['mkv','mp4','avi','m4v'])) continue;
+                            $sz = @filesize($row['folder_path'].'/'.$f);
+                            if ($sz > $best) { $best = $sz; $vid = $row['folder_path'].'/'.$f; }
+                        }
+                    }
+                    $verdict = $vid ? HealthScanner::evaluate($vid, $row['folder_path'], $rules)
+                                    : ['verdict' => 'needs_input', 'reason' => 'No video file found.', 'audio_langs' => '', 'embedded_subs' => '[]', 'external_subs' => '[]', 'required_subs' => '', 'missing_subs' => ''];
+                    $samples[] = [
+                        'title' => $row['title'] . ($row['year'] ? " ({$row['year']})" : ''),
+                        'folder' => $row['folder_path'],
+                        'result' => $verdict,
+                    ];
+                }
+            }
+            echo json_encode(['ok' => true, 'samples' => $samples]);
+            break;
+
         // ── Test Subtitle Provider ──────────────────────────────────────
         case 'test_provider':
             $input = json_decode(file_get_contents('php://input'), true);
@@ -256,7 +347,7 @@ try {
             $cmd = '/opt/ffsubsync/bin/python3 /app/subtitle_search.py test '
                  . escapeshellarg($args) . ' 2>&1';
             $output = shell_exec($cmd);
-            $result = json_decode($output, true);
+            $result = decodeJsonTolerant($output);
             echo json_encode($result ?: ['ok' => false, 'error' => 'Test failed', 'raw' => $output]);
             break;
 
@@ -318,7 +409,7 @@ try {
             $cmd = '/opt/ffsubsync/bin/python3 /app/subtitle_search.py search '
                  . escapeshellarg($args) . ' 2>&1';
             $output = shell_exec($cmd);
-            $result = json_decode($output, true);
+            $result = decodeJsonTolerant($output);
 
             if ($result === null) {
                 echo json_encode(['error' => 'Search failed', 'raw' => $output]);
@@ -328,6 +419,43 @@ try {
             break;
 
         // ── Subtitle Download ──────────────────────────────────────────
+        // ── Subtitle Preview (downloads to temp, returns first dialogue lines) ─
+        case 'subtitle_preview':
+            $input = json_decode(file_get_contents('php://input'), true);
+            $provider = $input['provider'] ?? '';
+            $fileId = $input['file_id'] ?? '';
+            if (!$provider || !$fileId) {
+                echo json_encode(['ok' => false, 'error' => 'provider and file_id required']);
+                break;
+            }
+            $providers = [
+                'opensubtitles' => [
+                    'api_key'  => DB::getSetting('sub_opensubtitles_api_key', ''),
+                    'username' => DB::getSetting('sub_opensubtitles_username', ''),
+                    'password' => DB::getSetting('sub_opensubtitles_password', ''),
+                ],
+                'subdl' => ['api_key' => DB::getSetting('sub_subdl_api_key', '')],
+                'podnapisi' => [],
+                'addic7ed' => [
+                    'username' => DB::getSetting('sub_addic7ed_username', ''),
+                    'password' => DB::getSetting('sub_addic7ed_password', ''),
+                ],
+                'yify' => [],
+                'gestdown' => [],
+            ];
+            $args = json_encode([
+                'provider' => $provider,
+                'file_id' => $fileId,
+                'providers' => $providers,
+                'max_lines' => 30,
+            ]);
+            $cmd = '/opt/ffsubsync/bin/python3 /app/subtitle_search.py preview '
+                 . escapeshellarg($args) . ' 2>&1';
+            $output = shell_exec($cmd);
+            $result = decodeJsonTolerant($output);
+            echo json_encode($result ?: ['ok' => false, 'error' => 'Preview failed', 'raw' => $output]);
+            break;
+
         case 'subtitle_download':
             $input = json_decode(file_get_contents('php://input'), true);
             $provider = $input['provider'] ?? '';
@@ -376,7 +504,7 @@ try {
             $cmd = '/opt/ffsubsync/bin/python3 /app/subtitle_search.py download '
                  . escapeshellarg($args) . ' 2>&1';
             $output = shell_exec($cmd);
-            $result = json_decode($output, true);
+            $result = decodeJsonTolerant($output);
 
             if ($result === null) {
                 echo json_encode(['error' => 'Download failed', 'raw' => $output]);

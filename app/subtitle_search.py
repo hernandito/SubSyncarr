@@ -432,103 +432,182 @@ class Addic7edProvider:
         self.password = password
         self.session = requests.Session()
         self.session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-            "Referer": self.BASE_URL,
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
         })
         self.logged_in = False
 
+    LANG_CODE_TO_ADDIC7ED = {
+        "en": ["English"],
+        "es": ["Spanish", "Spanish (Latin America)", "Spanish (Spain)"],
+        "fr": ["French"],
+        "de": ["German"],
+        "it": ["Italian"],
+        "pt": ["Portuguese", "Portuguese (Brazilian)"],
+        "ru": ["Russian"],
+        "nl": ["Dutch"],
+        "pl": ["Polish"],
+        "sv": ["Swedish"],
+        "da": ["Danish"],
+        "fi": ["Finnish"],
+        "no": ["Norwegian"],
+        "tr": ["Turkish"],
+        "ar": ["Arabic"],
+        "he": ["Hebrew"],
+        "zh": ["Chinese"],
+        "ja": ["Japanese"],
+        "ko": ["Korean"],
+        "cs": ["Czech"],
+        "hu": ["Hungarian"],
+        "ro": ["Romanian"],
+    }
+
+    ADDIC7ED_TO_LANG_CODE = {
+        "english": "en",
+        "spanish": "es",
+        "spanish (latin america)": "es",
+        "spanish (spain)": "es",
+        "french": "fr",
+        "german": "de",
+        "italian": "it",
+        "portuguese": "pt",
+        "portuguese (brazilian)": "pt",
+        "russian": "ru",
+        "dutch": "nl",
+        "polish": "pl",
+        "swedish": "sv",
+        "danish": "da",
+        "finnish": "fi",
+        "norwegian": "no",
+        "turkish": "tr",
+        "arabic": "ar",
+        "hebrew": "he",
+        "chinese": "zh",
+        "japanese": "ja",
+        "korean": "ko",
+        "czech": "cs",
+        "hungarian": "hu",
+        "romanian": "ro",
+    }
+
+    def _debug(self, message):
+        print(f"SubSyncarr Addic7ed: {message}", file=sys.stderr)
+
     def _login(self):
-        if self.logged_in or not self.username or not self.password:
-            return
+        if self.logged_in:
+            return True
+        if not self.username or not self.password:
+            return False
         try:
-            self.session.post(f"{self.BASE_URL}/dologin.php", data={
-                "username": self.username,
-                "password": self.password,
-                "Submit": "Log in",
-            }, timeout=10)
-            self.logged_in = True
-        except Exception:
-            pass
-
-    def search(self, title, year=None, language="en", season=None, episode=None, **kwargs):
-        results = []
-        try:
-            from bs4 import BeautifulSoup
-        except ImportError:
-            return results
-
-        self._login()
-        search_query = title
-        if season and episode:
-            search_query = f"{title} {season}x{str(episode).zfill(2)}"
-
-        try:
-            resp = self.session.get(
-                f"{self.BASE_URL}/search.php",
-                params={"search": search_query, "Submit": "Search"},
+            resp = self.session.post(
+                f"{self.BASE_URL}/dologin.php",
+                data={"username": self.username, "password": self.password, "remember": "1"},
                 timeout=15,
+                allow_redirects=True,
             )
-            if resp.status_code != 200:
-                return results
+            body = (resp.text or "").lower()
+            # Addic7ed has changed login markup over time. This is intentionally conservative:
+            # do not mark login as successful when the login form/error text is still present.
+            if resp.status_code == 200 and "incorrect" not in body and "wrong" not in body:
+                self.logged_in = True
+                return True
+            self._debug(f"login may have failed; HTTP {resp.status_code}")
+        except Exception as e:
+            self._debug(f"login error: {e}")
+        return False
 
-            soup = BeautifulSoup(resp.text, "html.parser")
+    def _wanted_addic7ed_languages(self, language):
+        return self.LANG_CODE_TO_ADDIC7ED.get(language or "en", ["English"])
 
-            # Parse search results - look for subtitle download links
-            for row in soup.select("tr.epeven, tr.completed"):
-                cells = row.find_all("td")
-                if len(cells) < 4:
+    def _language_code_from_text(self, text):
+        lower = (text or "").lower()
+        # Match longer names first so Spanish (Latin America) wins before Spanish.
+        for name in sorted(self.ADDIC7ED_TO_LANG_CODE, key=len, reverse=True):
+            if name in lower:
+                return self.ADDIC7ED_TO_LANG_CODE[name]
+        return ""
+
+    def _parse_episode_page(self, soup, wanted_language="en", title="", season=None, episode=None):
+        results = []
+        wanted_names = [n.lower() for n in self._wanted_addic7ed_languages(wanted_language)]
+
+        # Addic7ed episode pages store subtitle blocks in table.tabel95.
+        sub_tables = soup.find_all(
+            "table",
+            {"width": "100%", "border": "0", "align": "center", "class": "tabel95"},
+        )
+        if not sub_tables:
+            sub_tables = soup.select("table.tabel95")
+
+        for sub_table in sub_tables:
+            table_text = sub_table.get_text(" ", strip=True)
+
+            version = ""
+            title_cell = sub_table.find("td", {"colspan": "3", "align": "center", "class": "NewsTitle"})
+            if title_cell:
+                version = title_cell.get_text(" ", strip=True)
+                # The site often shows strings like "Version FENIX, 0.00 MBs".
+                if "Version " in version:
+                    version = version.split("Version ", 1)[1]
+                if "," in version:
+                    version = version.split(",", 1)[0].strip()
+
+            works_with_cell = sub_table.find("td", {"class": "newsDate", "colspan": "3"})
+            works_with = works_with_cell.get_text(" ", strip=True) if works_with_cell else ""
+            release = ", ".join([x for x in [version, works_with] if x]) or title or "Addic7ed subtitle"
+
+            for lang_cell in sub_table.find_all("td", {"class": "language"}):
+                lang_text = lang_cell.get_text(" ", strip=True)
+                lang_text_lower = lang_text.lower()
+
+                if wanted_names and not any(name in lang_text_lower for name in wanted_names):
                     continue
 
-                # Addic7ed row: season, episode, title, language, version, completed, HI, corrected, download
-                lang_cell = cells[3].get_text(strip=True) if len(cells) > 3 else ""
-                lang_map = {"English": "en", "Spanish": "es", "French": "fr",
-                            "German": "de", "Italian": "it", "Portuguese": "pt",
-                            "Russian": "ru", "Dutch": "nl", "Polish": "pl",
-                            "Swedish": "sv", "Danish": "da", "Finnish": "fi",
-                            "Norwegian": "no", "Turkish": "tr", "Arabic": "ar",
-                            "Hebrew": "he", "Chinese": "zh", "Japanese": "ja",
-                            "Korean": "ko", "Czech": "cs", "Hungarian": "hu",
-                            "Romanian": "ro"}
-                lang_code = lang_map.get(lang_cell, "")
-                if language and lang_code and lang_code != language:
+                lang_code = self._language_code_from_text(lang_text) or wanted_language
+                if wanted_language and lang_code and lang_code != wanted_language:
                     continue
 
-                # Find download link - look for /original/ or /updated/ in href
-                dl_link = None
-                for a in row.find_all("a"):
-                    href = a.get("href", "")
-                    if "/original/" in href or "/updated/" in href or "/finalsource" in href:
-                        dl_link = a
-                        break
+                download_cell = lang_cell.find_next("td", {"colspan": "3"})
+                if not download_cell:
+                    continue
 
+                dl_link = download_cell.find(
+                    "a",
+                    href=lambda h: h and (h.startswith("/original") or h.startswith("/updated")),
+                )
+                if not dl_link:
+                    # Some older pages/classes vary; fall back to any original/updated link in this table.
+                    dl_link = sub_table.find(
+                        "a",
+                        href=lambda h: h and (h.startswith("/original") or h.startswith("/updated")),
+                    )
                 if not dl_link:
                     continue
 
                 href = dl_link.get("href", "")
-                release = cells[4].get_text(strip=True) if len(cells) > 4 else ""
-                hi = bool(row.find("img", {"title": lambda t: t and "hearing" in t.lower()})) if row else False
-
-                # Extract season/episode from row
-                row_season = cells[0].get_text(strip=True) if len(cells) > 0 else ""
-                row_episode = cells[1].get_text(strip=True) if len(cells) > 1 else ""
-                row_title = cells[2].get_text(strip=True) if len(cells) > 2 else ""
-
-                # Filter by season/episode if specified
-                if season and row_season and str(season) != row_season:
-                    continue
-                if episode and row_episode and str(episode) != row_episode:
+                hi = "hearing impaired" in table_text.lower()
+                unfinished = "/jointranslation" in str(sub_table)
+                if unfinished:
+                    # Do not offer unfinished Addic7ed translations as downloadable results.
                     continue
 
-                display_name = f"S{row_season.zfill(2)}E{row_episode.zfill(2)} - {row_title}" if row_season and row_episode else release or title
+                ep_label = ""
+                if season and episode:
+                    try:
+                        ep_label = f"S{int(season):02d}E{int(episode):02d} - "
+                    except Exception:
+                        ep_label = f"S{season}E{episode} - "
+
+                display_name = f"{title} {ep_label}{release}".strip()
 
                 results.append({
                     "provider": "addic7ed",
                     "provider_name": "Addic7ed",
                     "file_id": href,
                     "filename": display_name,
-                    "language": lang_code or language,
-                    "release": release,
+                    "language": lang_code or wanted_language,
+                    "release": f"{title} {release}".strip(),
                     "download_count": 0,
                     "hearing_impaired": hi,
                     "fps": 0,
@@ -538,8 +617,86 @@ class Addic7edProvider:
                     "machine_translated": False,
                 })
 
+        return results
+
+    def search(self, title, year=None, language="en", season=None, episode=None, **kwargs):
+        results = []
+        try:
+            from bs4 import BeautifulSoup
+        except ImportError:
+            self._debug("BeautifulSoup is not installed")
+            return results
+
+        # Addic7ed is TV-focused. Do not try movie searches.
+        if not season or not episode:
+            # Silent skip — movie searches are expected to bypass Addic7ed; debug noise
+            # here was leaking into stderr and breaking the JSON parse in PHP.
+            return results
+
+        # Login is optional for browsing, but useful when Addic7ed requires it for downloads.
+        self._login()
+
+        try:
+            search_query = f"{title} s{int(season):02d}e{int(episode):02d}"
         except Exception:
-            pass
+            search_query = f"{title} s{season}e{episode}"
+
+        try:
+            resp = self.session.get(
+                f"{self.BASE_URL}/search.php",
+                params={"search": search_query, "Submit": "Search"},
+                timeout=20,
+                allow_redirects=True,
+            )
+            if resp.status_code != 200:
+                self._debug(f"search failed HTTP {resp.status_code}")
+                return results
+
+            soup = BeautifulSoup(resp.text, "html.parser")
+
+            # Case 1: Addic7ed may redirect directly to the episode page.
+            results = self._parse_episode_page(soup, language, title=title, season=season, episode=episode)
+            if results:
+                return results[:15]
+
+            # Case 2: Search results page contains /serie/... links; follow likely episode links.
+            episode_links = []
+            for a in soup.find_all("a", href=True):
+                href = a["href"].lstrip("/")
+                if href.startswith("serie/") and href not in episode_links:
+                    episode_links.append(href)
+
+            if not episode_links:
+                self._debug(f"no Addic7ed episode links found for query: {search_query}")
+                return results
+
+            wanted_season = str(int(season)) if str(season).isdigit() else str(season)
+            wanted_episode = str(int(episode)) if str(episode).isdigit() else str(episode)
+
+            # Prefer URLs whose path contains /season/episode/ after /serie/show/.
+            prioritized = []
+            for href in episode_links:
+                parts = href.split("/")
+                score = 0
+                if len(parts) >= 4:
+                    if parts[2] == wanted_season and parts[3] == wanted_episode:
+                        score = 100
+                    elif wanted_season in parts and wanted_episode in parts:
+                        score = 50
+                prioritized.append((score, href))
+            prioritized.sort(reverse=True)
+
+            for _score, href in prioritized[:5]:
+                page = self.session.get(f"{self.BASE_URL}/{href}", timeout=20, allow_redirects=True)
+                if page.status_code != 200:
+                    continue
+                page_soup = BeautifulSoup(page.text, "html.parser")
+                results.extend(self._parse_episode_page(page_soup, language, title=title, season=season, episode=episode))
+                if results:
+                    break
+
+        except Exception as e:
+            self._debug(f"search error: {e}")
 
         return results[:15]
 
@@ -547,14 +704,28 @@ class Addic7edProvider:
         try:
             self._login()
             url = f"{self.BASE_URL}{href}" if not href.startswith("http") else href
-            resp = self.session.get(url, timeout=30)
-            if resp.status_code == 200 and len(resp.content) > 10:
-                with open(output_path, "wb") as f:
-                    f.write(resp.content)
-                return {"ok": True, "path": output_path, "size": len(resp.content)}
-            return {"ok": False, "error": f"Download failed: status {resp.status_code}"}
+            resp = self.session.get(
+                url,
+                timeout=30,
+                allow_redirects=True,
+                headers={"Referer": self.BASE_URL},
+            )
+            if resp.status_code != 200:
+                return {"ok": False, "error": f"Download failed: status {resp.status_code}"}
+
+            content = resp.content or b""
+            start = content[:500].decode("utf-8", errors="ignore").lower()
+            if "<html" in start or "<!doctype" in start or "<body" in start:
+                return {"ok": False, "error": "Addic7ed returned HTML instead of a subtitle file. Login, rate-limit, or site layout may be blocking the download."}
+            if len(content) < 20:
+                return {"ok": False, "error": "Downloaded subtitle was empty or too small"}
+
+            with open(output_path, "wb") as f:
+                f.write(content)
+            return {"ok": True, "path": output_path, "size": len(content)}
         except Exception as e:
             return {"ok": False, "error": str(e)}
+
 
 
 # ── Provider: YIFY Subtitles ────────────────────────────────────────────
@@ -578,37 +749,60 @@ class YIFYProvider:
             from bs4 import BeautifulSoup
             soup = BeautifulSoup(resp.text, "html.parser")
 
-            # Find subtitle links in the table
+            lang_map = {
+                "english": "en", "spanish": "es", "french": "fr",
+                "german": "de", "italian": "it", "portuguese": "pt",
+                "russian": "ru", "dutch": "nl", "arabic": "ar",
+                "chinese": "zh", "japanese": "ja", "korean": "ko",
+                "turkish": "tr", "polish": "pl", "swedish": "sv",
+                "danish": "da", "finnish": "fi", "norwegian": "no",
+                "czech": "cs", "hungarian": "hu", "romanian": "ro",
+                "hebrew": "he", "brazilian": "pt", "bengali": "bn",
+                "vietnamese": "vi", "indonesian": "id", "thai": "th",
+                "ukrainian": "uk", "greek": "el", "bulgarian": "bg",
+                "croatian": "hr", "serbian": "sr", "slovak": "sk",
+                "slovenian": "sl", "estonian": "et", "latvian": "lv",
+                "lithuanian": "lt", "malay": "ms", "tagalog": "tl",
+                "farsi": "fa", "persian": "fa", "urdu": "ur", "hindi": "hi",
+                "tamil": "ta", "telugu": "te", "punjabi": "pa",
+                "albanian": "sq", "macedonian": "mk", "icelandic": "is",
+                "catalan": "ca", "basque": "eu", "galician": "gl",
+                "welsh": "cy", "irish": "ga",
+            }
+
             for a in soup.find_all("a", href=True):
                 href = a.get("href", "")
                 if "/subtitles/" not in href:
                     continue
 
-                # URL format: /subtitles/movie-name-year-LANGUAGE-uploader-ID
-                parts = href.rstrip("/").split("-")
-
-                # Extract language from URL
+                # First try: language from the row's <span class="sub-lang"> if present
+                row = a.find_parent("tr")
                 sub_lang = ""
-                lang_map = {
-                    "english": "en", "spanish": "es", "french": "fr",
-                    "german": "de", "italian": "it", "portuguese": "pt",
-                    "russian": "ru", "dutch": "nl", "arabic": "ar",
-                    "chinese": "zh", "japanese": "ja", "korean": "ko",
-                    "turkish": "tr", "polish": "pl", "swedish": "sv",
-                    "danish": "da", "finnish": "fi", "norwegian": "no",
-                    "czech": "cs", "hungarian": "hu", "romanian": "ro",
-                    "hebrew": "he", "brazilian": "pt",
-                }
-                for part in parts:
-                    if part.lower() in lang_map:
-                        sub_lang = lang_map[part.lower()]
-                        break
+                if row:
+                    lang_cell = row.find("span", class_="sub-lang")
+                    if lang_cell:
+                        cell_text = lang_cell.get_text(strip=True).lower()
+                        sub_lang = lang_map.get(cell_text, "")
 
-                if language and sub_lang and sub_lang != language:
+                # Fallback: detect language from URL slug
+                if not sub_lang:
+                    parts = href.rstrip("/").split("-")
+                    for part in parts:
+                        if part.lower() in lang_map:
+                            sub_lang = lang_map[part.lower()]
+                            break
+
+                # TIGHTENED: if we still can't confirm the language, DROP the row.
+                # Previously we fell through to the requested language, which let
+                # foreign-language subs masquerade as English.
+                if not sub_lang:
                     continue
 
-                # Get the rating from parent row if available
-                row = a.find_parent("tr")
+                # Only keep results matching the requested language
+                if language and sub_lang != language:
+                    continue
+
+                # Rating
                 rating_val = 0
                 if row:
                     rating_span = row.find("span", class_="label")
@@ -618,14 +812,17 @@ class YIFYProvider:
                         except (ValueError, TypeError):
                             pass
 
+                # Display name — truncated to keep the UI clean if YIFY's HTML is messy
                 display_name = a.get_text(strip=True) or href.split("/")[-1]
+                if len(display_name) > 160:
+                    display_name = display_name[:157] + "..."
 
                 results.append({
                     "provider": "yify",
                     "provider_name": "YIFY Subtitles",
                     "file_id": href,
                     "filename": display_name,
-                    "language": sub_lang or language,
+                    "language": sub_lang,
                     "release": display_name,
                     "download_count": 0,
                     "hearing_impaired": False,
@@ -814,6 +1011,8 @@ def main():
         do_download(args)
     elif action == "test":
         do_test(args)
+    elif action == "preview":
+        do_preview(args)
     else:
         print(json.dumps({"error": f"Unknown action: {action}"}))
         sys.exit(1)
@@ -931,23 +1130,32 @@ def do_test(args):
             print(json.dumps({"ok": False, "error": str(e)}))
 
     elif provider_name == "addic7ed":
+        config = providers_config.get("addic7ed", {})
         try:
-            resp = requests.get(
-                f"{Addic7edProvider.BASE_URL}/search.php",
-                params={"search": "test", "Submit": "Search"},
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
-                timeout=10,
+            provider = Addic7edProvider(
+                username=config.get("username", ""),
+                password=config.get("password", ""),
             )
-            if resp.status_code == 200:
+            # Real functional test, not just HTTP 200 from /search.php.
+            # Addic7ed is TV-focused, so verify against a known TV episode that
+            # the provider can search, follow the episode page, and parse one or
+            # more /original or /updated subtitle download links.
+            results = provider.search(
+                "Tracker (2024)",
+                language="en",
+                season=3,
+                episode=20,
+            )
+            if results:
+                first = results[0]
                 print(json.dumps({
                     "ok": True,
-                    "message": "Addic7ed — connection successful" + (
-                        " (login optional)" if not providers_config.get("addic7ed", {}).get("username") else "")
+                    "message": f"Addic7ed — functional test passed. Parsed {len(results)} subtitle link(s)."
                 }))
             else:
                 print(json.dumps({
                     "ok": False,
-                    "error": f"Addic7ed returned status {resp.status_code}"
+                    "error": "Addic7ed — search returned no parseable subtitle links. The site may be rate-limiting, blocking, or changed its layout."
                 }))
         except requests.exceptions.ConnectionError:
             print(json.dumps({"ok": False, "error": "Addic7ed — server unreachable"}))
@@ -1131,6 +1339,124 @@ def do_search(args):
         "results": all_results,
         "total": len(all_results),
     }))
+
+
+def do_preview(args):
+    """
+    Download a subtitle to a temp file, parse it, return first ~30 dialogue lines.
+    Strips .srt cue numbers and timestamps so the user sees actual subtitle TEXT.
+    Temp file is deleted before we return.
+    """
+    import tempfile, os as _os, re as _re
+
+    provider_name = args.get("provider", "")
+    file_id = args.get("file_id", "")
+    providers_config = args.get("providers", {})
+    max_lines = int(args.get("max_lines", 30))
+
+    if not provider_name or not file_id:
+        print(json.dumps({"ok": False, "error": "provider and file_id required"}))
+        return
+
+    # Write to a temp file we can delete after reading
+    tmp = tempfile.NamedTemporaryFile(suffix=".srt", delete=False, dir="/tmp")
+    tmp.close()
+    tmp_path = tmp.name
+
+    try:
+        # Reuse the existing download infrastructure
+        result = {"ok": False, "error": "Unknown provider"}
+        if provider_name == "opensubtitles":
+            cfg = providers_config.get("opensubtitles", {})
+            p = OpenSubtitlesProvider(api_key=cfg.get("api_key", ""),
+                                       username=cfg.get("username", ""),
+                                       password=cfg.get("password", ""))
+            result = p.download(file_id, tmp_path)
+        elif provider_name == "subdl":
+            cfg = providers_config.get("subdl", {})
+            p = SubDLProvider(api_key=cfg.get("api_key", ""))
+            result = p.download(file_id, tmp_path)
+        elif provider_name == "podnapisi":
+            result = PodnapisiProvider().download(file_id, tmp_path)
+        elif provider_name == "addic7ed":
+            cfg = providers_config.get("addic7ed", {})
+            p = Addic7edProvider(username=cfg.get("username", ""),
+                                  password=cfg.get("password", ""))
+            result = p.download(file_id, tmp_path)
+        elif provider_name == "yify":
+            result = YIFYProvider().download(file_id, tmp_path)
+        elif provider_name == "gestdown":
+            result = GestdownProvider().download(file_id, tmp_path)
+
+        if not result.get("ok"):
+            print(json.dumps({"ok": False, "error": result.get("error", "Download failed")}))
+            return
+
+        # Read the .srt, extract dialogue lines only
+        try:
+            with open(tmp_path, "rb") as f:
+                raw = f.read()
+            # Detect HTML responses (provider block / Cloudflare challenge / login wall)
+            head = raw[:500].decode("utf-8", errors="ignore").lower()
+            if "<!doctype" in head or "<html" in head or "cf-mitigated" in head or "just a moment" in head:
+                print(json.dumps({
+                    "ok": False,
+                    "error": "Provider returned an HTML page instead of a subtitle file (likely a Cloudflare challenge or login block). This subtitle cannot be previewed or downloaded right now."
+                }))
+                return
+            # Try UTF-8, fall back to latin-1
+            try:
+                text = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                try:
+                    text = raw.decode("utf-8-sig")
+                except UnicodeDecodeError:
+                    text = raw.decode("latin-1", errors="replace")
+        except Exception as e:
+            print(json.dumps({"ok": False, "error": f"Could not read subtitle file: {e}"}))
+            return
+
+        # Parse .srt blocks. Each block: cue_number \n timestamp \n text_lines... \n\n
+        # We extract just the text_lines.
+        blocks = _re.split(r"\r?\n\r?\n", text)
+        dialogue = []
+        timestamp_re = _re.compile(r"^\d{1,2}:\d{2}:\d{2}[,.]\d{1,3}\s*-->")
+        cue_re = _re.compile(r"^\d+$")
+        for block in blocks:
+            block_lines = block.strip().split("\n")
+            text_lines = []
+            for line in block_lines:
+                s = line.strip()
+                if not s:
+                    continue
+                if cue_re.match(s):
+                    continue
+                if timestamp_re.match(s):
+                    continue
+                # Strip SRT/HTML tags for readability
+                s = _re.sub(r"<[^>]+>", "", s)
+                s = _re.sub(r"\{[^}]+\}", "", s)
+                text_lines.append(s)
+            if text_lines:
+                dialogue.append(" ".join(text_lines))
+            if len(dialogue) >= max_lines:
+                break
+
+        if not dialogue:
+            print(json.dumps({"ok": False, "error": "Subtitle parsed but no dialogue found (file may be empty or in an unsupported format)"}))
+            return
+
+        print(json.dumps({
+            "ok": True,
+            "lines": dialogue[:max_lines],
+            "shown": len(dialogue[:max_lines]),
+        }))
+
+    finally:
+        try:
+            _os.unlink(tmp_path)
+        except OSError:
+            pass
 
 
 def do_download(args):
