@@ -93,6 +93,11 @@ body {
 .stat-value { font-size: 1.2rem; font-weight: 700; color: var(--accent); }
 .stat-label { font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
 
+#statLastScrape {
+  scale: 70%;
+}
+
+
 /* ── Search ───────────────────────────────────────────────────────────── */
 .search-wrap { position: relative; margin-bottom: 1.5rem; }
 .search-input {
@@ -1180,3 +1185,4 @@ a.sub-result-provider-link:hover {
   margin-bottom: 0;
   padding-bottom: 0;
 }
+
