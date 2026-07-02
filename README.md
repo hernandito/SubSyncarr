@@ -1,5 +1,8 @@
 # SubSyncarr
 
+
+# THIS IS STILL IUNDER DEVELOPMENT - NEDDS A LOT OF ADJUSTMENTS AND FIXES.
+
 <p align="center">
   <img src="full-logo.png" alt="SubSyncarr" width="640">
 </p>
